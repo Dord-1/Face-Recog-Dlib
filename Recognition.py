@@ -3,7 +3,6 @@ import face_recognition
 import os, sys
 import numpy as np
 import math
-from deepface import DeepFace
 
 def face_confidence(face_distance, face_match_threshold=0.6):
     range = (1.0 - face_match_threshold)
