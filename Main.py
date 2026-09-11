@@ -2,7 +2,7 @@ import os
 import cv2
 from Recognition import FaceRecognition
 
-from tkinter import *
+import tkinter as tk
 import tkinter.font as font
 import tkinter.simpledialog as simpledialog
 
@@ -11,10 +11,18 @@ def img_capture():
     cv2.namedWindow("Face Training")
     img_counter = 0
 
-    file_name = ''
-    file_name= simpledialog.askstring(title="FR System",prompt="Tên bạn là gì:")
-    window = Tk()
-    window.withdraw()
+    file_name = simpledialog.askstring(
+        title="FR System",
+        prompt="Tên bạn là gì:",
+        parent=window,
+    )
+    if not file_name or not file_name.strip():
+        cam.release()
+        cv2.destroyAllWindows()
+        return
+
+    file_name = file_name.strip()
+    os.makedirs("detect", exist_ok=True)
 
     while True:
         ret, frame = cam.read()
@@ -31,33 +39,32 @@ def img_capture():
             break
         elif k%256 == 32:
             # SPACE pressed
-            img_name = file_name + "_{}.jpg".format(img_counter)
-            cv2.imwrite(os.path.join("detect/" + img_name), frame)
-            print("{} đã chụp!".format(img_name))
+            img_name = f"{file_name}_{img_counter}.jpg"
+            cv2.imwrite(os.path.join("detect", img_name), frame)
+            print(f"{img_name} đã chụp!")
             img_counter += 1
 
     cam.release()
     cv2.destroyAllWindows()
-    window.destroy()
     
 if __name__ == "__main__":
-    window = Tk()
+    window = tk.Tk()
     window.config(width=300, height=300, padx=20, pady=50)
-    label = Label(
+    label = tk.Label(
     window, text='Chào mừng bạn đến với FR System, mời bạn chọn các phím sau:\n',font=font.Font(size=16))
     label.pack()
-    button = Button(window, text="Thêm ảnh vào hệ thống", command=img_capture, width=20, bg="red", fg="white", pady=10)
+    button = tk.Button(window, text="Thêm ảnh vào hệ thống", command=img_capture, width=20, bg="red", fg="white", pady=10)
     button['font']=font.Font(size=16)
     button.pack()
-    label = Label(window, text='\n')
+    label = tk.Label(window, text='\n')
     label.pack()
-    button = Button(window, 
+    button = tk.Button(window, 
                     text="Nhận diện khuôn mặt", 
                     command=lambda: FaceRecognition().run_recognition(), width=20, bg="#0052cc", fg="white", pady=10
             )
     button['font']=font.Font(size=16)
     button.pack()
-    label=Label(window,
+    label = tk.Label(window,
                 text="\nHướng dẫn\n1).Thêm ảnh vào bằng cách nhập tên và nhấn phím SPACEBAR để chụp ảnh. Sau khi xác nhận đã có ảnh, nhấn ESC để thoát.\n2).Khi muốn thoát khỏi nhận diện khuôn mặt, nhấn phím ESC để thoát.",
                 font=font.Font(size=14))
     label.pack()
