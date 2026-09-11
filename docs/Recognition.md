@@ -10,12 +10,16 @@ import face_recognition
 import os, sys
 import numpy as np
 import math
+import threading
+import time
 ```
 
 - `cv2`: đọc khung hình từ webcam, vẽ khung/chữ lên ảnh, hiển thị cửa sổ.
 - `face_recognition`: phát hiện vị trí khuôn mặt, mã hoá khuôn mặt thành vector đặc trưng, so khớp và tính khoảng cách.
 - `numpy`: tìm chỉ số nhỏ nhất trong mảng khoảng cách (`np.argmin`).
 - `math`: dùng trong công thức tính độ tin cậy.
+- `threading`: chạy việc đọc webcam trên 1 thread riêng (xem [`VideoStream`](#lớp-videostream-đọc-webcam-bất-đồng-bộ)) để tránh giật/lag.
+- `time`: đo thời gian giữa các khung hình để tính FPS hiển thị trên màn hình.
 
 ## Hàm `face_confidence()`
 
@@ -86,39 +90,84 @@ Chỉ dùng công thức tuyến tính đơn giản (không làm cong), vì trư
 
 **Điểm mấu chốt**: đây **không phải xác suất do model học được**, mà là một công thức chuyển đổi thủ công (heuristic) từ khoảng cách vector sang phần trăm, mục đích chỉ để hiển thị UI cho dễ hiểu — con số càng cao thì hai khuôn mặt càng giống nhau theo cách đo của `face_recognition`, chứ không phải "AI chắc chắn X%" theo nghĩa thống kê.
 
+## Lớp `VideoStream` (đọc webcam bất đồng bộ)
+
+```python
+class VideoStream:
+    def __init__(self, src=0, width=640, height=480):
+        self.stream = cv2.VideoCapture(src)
+        self.stream.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        self.stream.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+
+        if not self.stream.isOpened():
+            sys.exit('Camera not found')
+
+        self.lock = threading.Lock()
+        self.ret, self.frame = self.stream.read()
+        self.stopped = False
+        self.thread = threading.Thread(target=self._update, daemon=True)
+        self.thread.start()
+
+    def _update(self):
+        while not self.stopped:
+            ret, frame = self.stream.read()
+            with self.lock:
+                self.ret, self.frame = ret, frame
+
+    def read(self):
+        with self.lock:
+            return self.ret, self.frame.copy() if self.frame is not None else None
+
+    def stop(self):
+        self.stopped = True
+        self.thread.join(timeout=1.0)
+        self.stream.release()
+```
+
+### Vì sao cần class này?
+
+Ban đầu code đọc webcam trực tiếp bằng `cv2.VideoCapture(0).read()` **ngay trong** vòng lặp xử lý nhận diện. Vấn đề: `cam.read()` và bước nhận diện (`face_locations`, `face_encodings`...) chạy **tuần tự trên cùng 1 thread**. Khi bước nhận diện chậm hơn tốc độ camera sinh khung hình, chương trình buộc phải "trả nợ" các khung hình cũ đang dồn trong buffer của driver camera trước khi đọc được khung hình mới nhất — gây cảm giác hình ảnh bị **trễ và giật cục** dù CPU vẫn đang chạy.
+
+`VideoStream` giải quyết vấn đề này bằng cách tách việc đọc camera ra **1 thread nền riêng**:
+
+- `__init__`: mở camera, **set độ phân giải tường minh** (`width=640, height=480` — mặc định) để giảm tải cho cả bước đọc lẫn resize sau này, rồi khởi động thread nền `_update`.
+- `_update` (chạy trên thread nền): liên tục gọi `stream.read()` trong vòng lặp riêng, **luôn ghi đè** `self.frame` bằng khung hình mới nhất — **không dùng queue**, nên không có chuyện dồn (backlog) khung hình cũ.
+- `read()` (gọi từ thread chính): lấy khung hình mới nhất hiện có tại thời điểm gọi. Dùng `threading.Lock` để tránh race condition khi thread nền đang ghi đè `self.frame` cùng lúc thread chính đang đọc; `.copy()` đảm bảo thread chính có bản sao riêng, không bị thread nền ghi đè giữa chừng khi đang xử lý.
+- `stop()`: báo dừng thread nền, chờ nó kết thúc (`join`), rồi giải phóng camera — tránh thread bị treo hoặc lỗi khi đóng chương trình.
+
+Kết quả: dù bước nhận diện AI chạy chậm, luồng hiển thị luôn lấy được khung hình **mới nhất** thay vì phải xử lý hết các khung cũ đã lỗi thời — hình ảnh mượt và ổn định hơn hẳn.
+
 ## Lớp `FaceRecognition`
 
 ```python
 class FaceRecognition:
-    face_locations = []
-    face_encodings = []
-    face_names = []
-    known_face_encodings = []
-    known_face_names = []
-    process_current_frame = True
-```
+    PROCESS_EVERY_N = 3
 
-Các thuộc tính này được khai báo ở **cấp lớp** (class-level), đóng vai trò state dùng chung xuyên suốt vòng lặp nhận diện:
+    def __init__(self):
+        self.face_locations = []
+        self.face_encodings = []
+        self.face_names = []
+        self.known_face_encodings = []
+        self.known_face_names = []
+        self.frame_count = 0
+        self.encode_faces()
+```
 
 | Thuộc tính | Ý nghĩa |
 |---|---|
+| `PROCESS_EVERY_N` | Hằng số cấp lớp: chỉ chạy nhận diện trên **1 trong mỗi N khung hình** (mặc định `3`). Tăng giá trị này để giảm tải CPU trên máy yếu, đổi lại độ trễ nhận diện tăng nhẹ. |
 | `face_locations` | Toạ độ (top, right, bottom, left) của các khuôn mặt phát hiện được trong khung hình hiện tại |
 | `face_encodings` | Vector đặc trưng 128 chiều của từng khuôn mặt trong khung hình hiện tại |
 | `face_names` | Tên (+ độ tin cậy) tương ứng với từng khuôn mặt, để hiển thị lên ảnh |
 | `known_face_encodings` | Danh sách vector đặc trưng của các khuôn mặt đã lưu (dữ liệu "đã biết") |
 | `known_face_names` | Tên tương ứng với `known_face_encodings` (chính là tên file ảnh trong `detect/`) |
-| `process_current_frame` | Cờ để chỉ xử lý nhận diện trên **1 trong 2** khung hình, giúp giảm tải CPU |
+| `frame_count` | Bộ đếm số khung hình đã xử lý, dùng để quyết định khung nào chạy nhận diện (`frame_count % PROCESS_EVERY_N == 0`) |
 
-> **Lưu ý kỹ thuật**: đây là thuộc tính class chứ không phải `self.x` khởi tạo trong `__init__`, nên về lý thuyết chúng được **chia sẻ giữa mọi instance** của `FaceRecognition`. Với cách dùng hiện tại (chỉ tạo 1 instance) thì không gây vấn đề, nhưng đây không phải thực hành tốt — nên khởi tạo trong `__init__` bằng `self.face_locations = []`, v.v.
+> Các thuộc tính state (`face_locations`, `face_encodings`, ...) nay được khởi tạo trong `__init__` bằng `self.x = ...` thay vì khai báo ở cấp lớp như trước — mỗi instance của `FaceRecognition` có state riêng, tránh rủi ro chia sẻ dữ liệu ngoài ý muốn giữa các instance.
 
 ### `__init__(self)`
 
-```python
-def __init__(self):
-    self.encode_faces()
-```
-
-Khi tạo `FaceRecognition()`, lập tức gọi `encode_faces()` để nạp toàn bộ dữ liệu khuôn mặt đã lưu.
+Khởi tạo toàn bộ state rỗng cho instance, rồi gọi `encode_faces()` để nạp dữ liệu khuôn mặt đã lưu.
 
 ### `encode_faces(self)`
 
@@ -146,34 +195,37 @@ def encode_faces(self):
 Vòng lặp chính, chạy webcam và nhận diện theo thời gian thực:
 
 ```python
-video_capture = cv2.VideoCapture(0)
-if not video_capture.isOpened():
-    sys.exit('Camera not found')
+video_stream = VideoStream(0)
 ```
 
-Mở webcam mặc định (index `0`). Nếu không mở được thì thoát chương trình.
+Mở webcam qua `VideoStream` (thay vì `cv2.VideoCapture` trực tiếp như trước) để việc đọc camera chạy trên thread nền, tránh giật/lag như giải thích ở phần [`VideoStream`](#lớp-videostream-đọc-webcam-bất-đồng-bộ) phía trên.
 
 ```python
 while True:
-    ret, frame = video_capture.read()
+    ret, frame = video_stream.read()
+    if not ret or frame is None:
+        continue
 
-    if self.process_current_frame:
+    if self.frame_count % self.PROCESS_EVERY_N == 0:
         small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
         rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
         ...
-    self.process_current_frame = not self.process_current_frame
+    self.frame_count += 1
 ```
 
-- **Tối ưu hiệu năng**: chỉ chạy nhận diện (bước tốn CPU nhất) trên **mỗi khung hình thứ 2** (`process_current_frame` đảo trạng thái mỗi vòng lặp). Khung hình còn lại chỉ hiển thị lại kết quả cũ.
+- `video_stream.read()` luôn trả về khung hình mới nhất hiện có từ thread nền. Nếu chưa có khung hình hợp lệ (`ret` sai hoặc `frame` rỗng — có thể xảy ra ngay lúc mới khởi động camera), bỏ qua vòng lặp này (`continue`) thay vì crash.
+- **Tối ưu hiệu năng**: chỉ chạy nhận diện (bước tốn CPU nhất) khi `frame_count % PROCESS_EVERY_N == 0`, tức **1 trong mỗi 3 khung hình** theo mặc định — thay cho cách cũ đảo bool xử lý 1/2 khung. Cách dùng bộ đếm chia hết cho phép tinh chỉnh linh hoạt hơn (chỉ cần đổi `PROCESS_EVERY_N`) để cân bằng giữa độ mượt và tải CPU tuỳ cấu hình máy.
 - Ảnh được resize xuống còn **25%** kích thước gốc (`fx=0.25, fy=0.25`) trước khi nhận diện, giúp giảm đáng kể thời gian xử lý.
 - OpenCV đọc ảnh theo thứ tự màu **BGR**, trong khi `face_recognition` cần **RGB**, nên phải chuyển đổi bằng `cv2.cvtColor(..., cv2.COLOR_BGR2RGB)`.
 
 ```python
-self.face_locations = face_recognition.face_locations(rgb_small_frame)
+self.face_locations = face_recognition.face_locations(rgb_small_frame, number_of_times_to_upsample=0)
 self.face_encodings = face_recognition.face_encodings(rgb_small_frame, self.face_locations)
 ```
 
 Phát hiện vị trí tất cả khuôn mặt trong khung hình nhỏ, rồi mã hoá từng khuôn mặt thành vector đặc trưng.
+
+- `number_of_times_to_upsample=0` (mặc định của thư viện là `1`): bỏ bước phóng to ảnh lên để tìm khuôn mặt nhỏ/xa camera, đổi lấy tốc độ nhanh hơn. Đánh đổi hợp lý cho use-case chính là người dùng đứng gần webcam.
 
 ```python
 for face_encoding in self.face_encodings:
@@ -212,6 +264,15 @@ for (top, right, bottom, left), name in zip(self.face_locations, self.face_names
 - Vẽ khung chữ nhật đỏ quanh khuôn mặt, vẽ thêm nhãn tên phía dưới khung.
 
 ```python
+now = time.time()
+fps = 1.0 / (now - prev_time) if now > prev_time else fps
+prev_time = now
+cv2.putText(frame, f'FPS: {fps:.1f}', (10, 25), cv2.FONT_HERSHEY_DUPLEX, 0.7, (0, 255, 0), 1)
+```
+
+Tính FPS (khung hình/giây) dựa trên thời gian trôi qua giữa 2 vòng lặp liên tiếp, rồi vẽ số liệu lên góc trái phía trên màn hình. Đây là công cụ chẩn đoán trực quan: người dùng có thể tự quan sát tốc độ hiển thị thực tế, hữu ích khi tinh chỉnh `PROCESS_EVERY_N` hoặc độ phân giải camera cho phù hợp với cấu hình máy.
+
+```python
 cv2.imshow('Face Recognition', frame)
 if cv2.waitKey(1) % 256 == 27:  # ESC pressed
     break
@@ -220,11 +281,11 @@ if cv2.waitKey(1) % 256 == 27:  # ESC pressed
 Hiển thị khung hình kết quả; nhấn `ESC` (mã 27) để thoát vòng lặp.
 
 ```python
-video_capture.release()
+video_stream.stop()
 cv2.destroyAllWindows()
 ```
 
-Giải phóng webcam và đóng toàn bộ cửa sổ OpenCV khi kết thúc.
+Dừng thread nền và giải phóng webcam (qua `VideoStream.stop()`), rồi đóng toàn bộ cửa sổ OpenCV khi kết thúc.
 
 ## Tóm tắt luồng xử lý
 
@@ -233,10 +294,21 @@ Khởi tạo FaceRecognition()
    → encode_faces(): nạp & mã hoá toàn bộ ảnh trong detect/
         ↓
 run_recognition()
-   → mở webcam
-   → vòng lặp: đọc khung hình → (mỗi khung thứ 2) resize + phát hiện + mã hoá khuôn mặt
-        → so khớp với known_face_encodings → chọn khuôn mặt gần nhất
-        → nếu match: gán tên + % confidence, ngược lại: "Unknown"
-   → vẽ khung + tên lên khung hình gốc → hiển thị
-   → ESC để thoát
+   → mở VideoStream (thread nền liên tục đọc khung hình mới nhất từ webcam)
+   → vòng lặp (thread chính):
+        → lấy khung hình mới nhất từ VideoStream
+        → (mỗi PROCESS_EVERY_N khung) resize 25% + phát hiện + mã hoá khuôn mặt
+             → so khớp với known_face_encodings → chọn khuôn mặt gần nhất
+             → nếu match: gán tên + % confidence, ngược lại: "Unknown"
+        → vẽ khung + tên + FPS lên khung hình gốc → hiển thị
+   → ESC để thoát → dừng VideoStream, đóng cửa sổ
 ```
+
+## Vì sao cách này giảm được lag/giật hình?
+
+So với bản gốc (đọc + xử lý tuần tự trên 1 thread), các thay đổi trên nhắm vào 2 nguyên nhân chính gây giật/lag:
+
+1. **Backlog khung hình do đọc/xử lý chung 1 thread** → tách `VideoStream` chạy nền, thread chính luôn lấy khung hình mới nhất thay vì phải xử lý hết hàng chờ khung cũ.
+2. **Xử lý AI quá nặng trên mỗi khung** → giảm độ phân giải capture (640×480), tăng tỉ lệ bỏ khung có thể tinh chỉnh (`PROCESS_EVERY_N`), và bỏ bước upsample không cần thiết (`number_of_times_to_upsample=0`).
+
+Nếu máy vẫn lag, có thể tăng `PROCESS_EVERY_N` (ví dụ lên `5`) hoặc giảm `width`/`height` khi khởi tạo `VideoStream` để giảm tải hơn nữa.

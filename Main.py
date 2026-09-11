@@ -3,6 +3,7 @@ import cv2
 from Recognition import FaceRecognition
 
 import tkinter as tk
+from tkinter import ttk
 import tkinter.font as font
 import tkinter.simpledialog as simpledialog
 
@@ -50,19 +51,39 @@ def img_capture():
 if __name__ == "__main__":
     window = tk.Tk()
     window.config(width=300, height=300, padx=20, pady=50)
+
+    # Trên macOS, tk.Button dùng theme "aqua" gốc của hệ điều hành và BỎ QUA
+    # hoàn toàn bg/fg tuỳ chỉnh (không liên quan dark/light mode, đây là giới
+    # hạn cố định của Tkinter trên macOS). Dùng ttk.Button với theme "clam"
+    # để màu nút hiển thị đúng như mong muốn trên mọi nền tảng.
+    style = ttk.Style()
+    style.theme_use("clam")
+
+    button_font = font.Font(size=16)
+
+    style.configure(
+        "Red.TButton", background="red", foreground="white",
+        font=button_font, padding=10,
+    )
+    style.map("Red.TButton", background=[("active", "#cc0000")])
+
+    style.configure(
+        "Blue.TButton", background="#0052cc", foreground="white",
+        font=button_font, padding=10,
+    )
+    style.map("Blue.TButton", background=[("active", "#003d99")])
+
     label = tk.Label(
     window, text='Chào mừng bạn đến với FR System, mời bạn chọn các phím sau:\n',font=font.Font(size=16))
     label.pack()
-    button = tk.Button(window, text="Thêm ảnh vào hệ thống", command=img_capture, width=20, bg="red", fg="white", pady=10)
-    button['font']=font.Font(size=16)
+    button = ttk.Button(window, text="Thêm ảnh vào hệ thống", command=img_capture, width=20, style="Red.TButton")
     button.pack()
     label = tk.Label(window, text='\n')
     label.pack()
-    button = tk.Button(window, 
-                    text="Nhận diện khuôn mặt", 
-                    command=lambda: FaceRecognition().run_recognition(), width=20, bg="#0052cc", fg="white", pady=10
+    button = ttk.Button(window,
+                    text="Nhận diện khuôn mặt",
+                    command=lambda: FaceRecognition().run_recognition(), width=20, style="Blue.TButton"
             )
-    button['font']=font.Font(size=16)
     button.pack()
     label = tk.Label(window,
                 text="\nHướng dẫn\n1).Thêm ảnh vào bằng cách nhập tên và nhấn phím SPACEBAR để chụp ảnh. Sau khi xác nhận đã có ảnh, nhấn ESC để thoát.\n2).Khi muốn thoát khỏi nhận diện khuôn mặt, nhấn phím ESC để thoát.",
