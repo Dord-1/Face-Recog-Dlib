@@ -63,10 +63,12 @@ Cửa sổ GUI sẽ hiện ra với hai nút bấm:
 
 1. **Thêm ảnh vào hệ thống**
    - Nhập tên khi được hỏi.
-   - Nhấn phím `SPACEBAR` để chụp ảnh khuôn mặt (có thể chụp nhiều lần).
+   - Khung hình hiển thị viền **xanh** khi ảnh hợp lệ (đúng 1 khuôn mặt, đủ lớn) và **đỏ** kèm lý do khi chưa hợp lệ.
+   - Nhấn phím `SPACEBAR` để chụp; ảnh chỉ được lưu khi viền xanh. Chụp lại cùng tên sẽ không ghi đè ảnh cũ.
    - Nhấn `ESC` để đóng cửa sổ webcam khi đã chụp xong.
 
 2. **Nhận diện khuôn mặt**
+   - Encoding khuôn mặt được cache trong `detect/.encodings.pkl` nên các lần mở sau khởi động nhanh; ảnh không có khuôn mặt bị bỏ qua thay vì gây lỗi.
    - Mở webcam và nhận diện các khuôn mặt đã lưu trong `detect/`, hiển thị tên và độ tin cậy trên khung hình.
    - Nhấn `ESC` để thoát.
 

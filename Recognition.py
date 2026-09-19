@@ -5,6 +5,13 @@ import numpy as np
 import math
 import threading
 import time
+import pickle
+
+DETECT_DIR = 'detect'
+IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png')
+CACHE_PATH = os.path.join(DETECT_DIR, '.encodings.pkl')
+CACHE_VERSION = 1  # tăng số này khi đổi cách mã hoá để bỏ cache cũ
+
 
 def face_confidence(face_distance, face_match_threshold=0.6):
     range = (1.0 - face_match_threshold)
@@ -70,14 +77,67 @@ class FaceRecognition:
         self.frame_count = 0
         self.encode_faces()
 
-    def encode_faces(self):
-        for image in os.listdir('detect'):
-            face_image = face_recognition.load_image_file(f'detect/{image}')
-            face_encoding = face_recognition.face_encodings(face_image)[0]
+    def _load_cache(self):
+        try:
+            with open(CACHE_PATH, 'rb') as f:
+                data = pickle.load(f)
+            if data.get('version') == CACHE_VERSION:
+                return data['entries']
+        except Exception:
+            pass  # không có cache, hỏng hoặc khác phiên bản -> mã hoá lại từ đầu
+        return {}
 
-            self.known_face_encodings.append(face_encoding)
+    def _save_cache(self, entries):
+        tmp_path = CACHE_PATH + '.tmp'
+        try:
+            with open(tmp_path, 'wb') as f:
+                pickle.dump({'version': CACHE_VERSION, 'entries': entries}, f)
+            os.replace(tmp_path, CACHE_PATH)
+        except OSError as e:
+            print(f'Không lưu được cache encoding: {e}')
+
+    def encode_faces(self):
+        """Nạp encoding của ảnh trong detect/, dùng cache theo mtime để khỏi mã hoá lại.
+
+        Ảnh không đọc được hoặc không có khuôn mặt bị bỏ qua (thay vì làm crash).
+        """
+        os.makedirs(DETECT_DIR, exist_ok=True)
+        cache = self._load_cache()
+        entries = {}
+        skipped = []
+        reused = 0
+
+        for image in sorted(os.listdir(DETECT_DIR)):
+            if not image.lower().endswith(IMAGE_EXTENSIONS):
+                continue
+
+            path = os.path.join(DETECT_DIR, image)
+            mtime = os.path.getmtime(path)
+            cached = cache.get(image)
+
+            if cached and cached['mtime'] == mtime:
+                encoding = cached['encoding']
+                reused += 1
+            else:
+                try:
+                    found = face_recognition.face_encodings(face_recognition.load_image_file(path))
+                    encoding = found[0] if found else None
+                except Exception:
+                    encoding = None
+
+            entries[image] = {'mtime': mtime, 'encoding': encoding}  # None = ảnh lỗi, cũng được cache
+
+            if encoding is None:
+                skipped.append(image)
+                continue
+            self.known_face_encodings.append(encoding)
             self.known_face_names.append(image)
-        print(self.known_face_names)
+
+        self._save_cache(entries)
+        print(f'Đã nạp {len(self.known_face_names)} ảnh '
+              f'({reused} từ cache, {len(entries) - reused} mã hoá mới)')
+        if skipped:
+            print(f'Bỏ qua {len(skipped)} ảnh không có khuôn mặt hoặc không đọc được: {skipped}')
 
     def run_recognition(self):
         video_stream = VideoStream(0)
@@ -100,6 +160,10 @@ class FaceRecognition:
                 self.face_names = []
 
                 for face_encoding in self.face_encodings:
+                    if not self.known_face_encodings:
+                        self.face_names.append('Unknown Unknown')
+                        continue
+
                     matches = face_recognition.compare_faces(self.known_face_encodings, face_encoding) #RetinaFace.verify
                     name = 'Unknown'
                     confidence = 'Unknown'

@@ -12,6 +12,7 @@ import numpy as np
 import math
 import threading
 import time
+import pickle
 ```
 
 - `cv2`: đọc khung hình từ webcam, vẽ khung/chữ lên ảnh, hiển thị cửa sổ.
@@ -20,6 +21,7 @@ import time
 - `math`: dùng trong công thức tính độ tin cậy.
 - `threading`: chạy việc đọc webcam trên 1 thread riêng (xem [`VideoStream`](#lớp-videostream-đọc-webcam-bất-đồng-bộ)) để tránh giật/lag.
 - `time`: đo thời gian giữa các khung hình để tính FPS hiển thị trên màn hình.
+- `pickle`: lưu/đọc cache encoding khuôn mặt (xem [`encode_faces`](#encode_facesself-và-cache-encoding)).
 
 ## Hàm `face_confidence()`
 
@@ -169,26 +171,26 @@ class FaceRecognition:
 
 Khởi tạo toàn bộ state rỗng cho instance, rồi gọi `encode_faces()` để nạp dữ liệu khuôn mặt đã lưu.
 
-### `encode_faces(self)`
+### `encode_faces(self)` và cache encoding
+
+Nạp encoding của mọi ảnh trong `detect/`. Bước tốn kém nhất là `face_recognition.face_encodings()` (chạy model deep learning để biến ảnh thành vector 128 số, cỡ vài trăm ms mỗi ảnh), và kết quả không đổi nếu ảnh không đổi. Vì vậy encoding được **cache** trong file `detect/.encodings.pkl`:
 
 ```python
-def encode_faces(self):
-    for image in os.listdir('detect'):
-        face_image = face_recognition.load_image_file(f'detect/{image}')
-        face_encoding = face_recognition.face_encodings(face_image)[0]
-
-        self.known_face_encodings.append(face_encoding)
-        self.known_face_names.append(image)
-    print(self.known_face_names)
+cached = cache.get(image)
+if cached and cached['mtime'] == mtime:
+    encoding = cached['encoding']          # ảnh không đổi -> dùng lại
+else:
+    found = face_recognition.face_encodings(face_recognition.load_image_file(path))
+    encoding = found[0] if found else None # ảnh mới/đã sửa -> mã hoá
 ```
 
-- Duyệt qua mọi file ảnh trong thư mục `detect/` (nơi `Main.py` lưu ảnh khi người dùng bấm SPACEBAR).
-- Với mỗi ảnh: nạp ảnh → tìm vector đặc trưng khuôn mặt đầu tiên trong ảnh (`face_encodings(...)[0]`) → lưu vào `known_face_encodings`.
-- Tên hiển thị (`known_face_names`) chính là **tên file**, ví dụ `An_0.jpg`.
+- **Khoá cache là `mtime`** (thời điểm sửa file): thêm ảnh mới chỉ mã hoá ảnh đó; chụp lại/sửa ảnh cùng tên thì `mtime` đổi nên mã hoá lại; ảnh đã xoá tự biến mất khỏi cache vì cache được ghi lại theo danh sách ảnh hiện có.
+- **Chỉ xét file `.jpg/.jpeg/.png`**, nên `.DS_Store` và chính file cache bị bỏ qua.
+- **Ảnh lỗi không còn làm crash**: ảnh không có khuôn mặt hoặc không đọc được có `encoding = None`, bị bỏ qua và được cảnh báo khi khởi động. Kết quả này cũng được cache nên không phải thử lại mỗi lần.
+- **An toàn**: file cache hỏng, không có, hoặc khác `CACHE_VERSION` thì tự mã hoá lại từ đầu; ghi cache qua file tạm rồi `os.replace` để không bị hỏng nếu tắt giữa chừng. Khi đổi cách mã hoá, tăng `CACHE_VERSION` để bỏ cache cũ.
+- File cache nằm trong `detect/` nên đã được `.gitignore` bỏ qua.
 
-⚠️ **Rủi ro tiềm ẩn**:
-- Nếu một ảnh trong `detect/` không có khuôn mặt nào, `face_encodings(face_image)` trả về list rỗng → `[0]` sẽ ném `IndexError` và làm crash chương trình.
-- Nếu `detect/` chứa file không phải ảnh (ví dụ `.DS_Store` trên macOS), `load_image_file` cũng sẽ lỗi.
+Khi khởi động, chương trình in tóm tắt, ví dụ `Đã nạp 12 ảnh (11 từ cache, 1 mã hoá mới)`.
 
 ### `run_recognition(self)`
 
