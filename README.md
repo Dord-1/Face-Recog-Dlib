@@ -78,6 +78,17 @@ python "Simple Face Detection.py"
 
 Script này chỉ khoanh vùng khuôn mặt bằng khung chữ nhật (không nhận diện danh tính), dùng để kiểm tra nhanh webcam/OpenCV hoạt động tốt. Nhấn `q` để thoát.
 
+### Dọn dẹp thư mục `detect/` (tuỳ chọn)
+
+Nếu một người có nhiều ảnh trùng, hoặc có ảnh không chứa khuôn mặt (gây lỗi khi nhận diện), dùng script kiểm tra:
+
+```bash
+python Check_Detect.py            # chỉ báo cáo, không xoá gì
+python Check_Detect.py --delete   # xoá sau khi xác nhận từng nhóm
+```
+
+Script gom các ảnh của cùng một người, đề xuất giữ ảnh có khuôn mặt lớn nhất và chỉ xoá những ảnh bạn xác nhận. Chi tiết: [docs/Check_Detect.md](docs/Check_Detect.md).
+
 ## Ghi công
 
 Chương trình có sử dụng code tham khảo từ:
