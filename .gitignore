@@ -1,2 +1,4 @@
-__pycache__
-detect
+venv/
+__pycache__/
+*.pyc
+detect/

@@ -1,0 +1,4 @@
+opencv-python<5  # OpenCV 5.x removed cv2.CascadeClassifier from Python bindings
+face_recognition
+numpy
+setuptools<81  # face_recognition_models needs pkg_resources, removed in newer setuptools
