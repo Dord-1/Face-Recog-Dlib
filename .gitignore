@@ -1,5 +1,9 @@
 venv/
 __pycache__/
 *.pyc
-detect/
-eval/
+
+# Giữ thư mục nhưng bỏ qua ảnh khuôn mặt (dữ liệu sinh trắc học) và cache bên trong
+detect/*
+!detect/.gitkeep
+eval/*
+!eval/.gitkeep

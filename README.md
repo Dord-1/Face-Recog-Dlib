@@ -60,11 +60,7 @@ pip install -r requirements.txt
 
 ### Trước khi chạy
 
-Tạo thư mục `detect/` trong thư mục gốc của dự án — đây là nơi chương trình lưu ảnh khuôn mặt đã chụp:
-
-```bash
-mkdir detect
-```
+Thư mục `detect/` (nơi lưu ảnh khuôn mặt đã chụp) có sẵn trong repo; ảnh bên trong không được đưa lên git. Nếu bị xoá, chương trình tự tạo lại.
 
 Nhận diện khuôn mặt có thể chạy chậm trên máy cấu hình yếu, thậm chí có thể bị lag hoặc không chạy được.
 
