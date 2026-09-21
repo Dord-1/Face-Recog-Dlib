@@ -1,5 +1,6 @@
 """Làm mượt nhãn nhận diện qua nhiều lần chạy bằng bỏ phiếu theo từng khuôn mặt (track)."""
 from collections import Counter, deque
+from typing import Any
 
 from face_recog.config import TRACK_MAX_DIST_RATIO, TRACK_MAX_MISSES, VOTE_MIN, VOTE_WINDOW
 
@@ -25,7 +26,7 @@ class NameSmoother:
         self.min_votes = min_votes
         self.max_misses = max_misses
         self.max_dist_ratio = max_dist_ratio
-        self.tracks = []
+        self.tracks: list[dict[str, Any]] = []
 
     def update(self, locations, results):
         faces = [(_center_and_width(loc), res) for loc, res in zip(locations, results, strict=True)]
@@ -34,7 +35,9 @@ class NameSmoother:
         outputs = []
         matched_tracks = set()
         for index, ((center, width), result) in enumerate(faces):
-            track = self.tracks[assignment[index]] if index in assignment else None
+            track: dict[str, Any] | None = (
+                self.tracks[assignment[index]] if index in assignment else None
+            )
             if track is None:
                 track = {'votes': deque(maxlen=self.window)}
                 self.tracks.append(track)

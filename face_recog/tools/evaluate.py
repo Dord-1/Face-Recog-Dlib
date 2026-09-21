@@ -89,8 +89,9 @@ def compute_metrics(records, enrolled, threshold):
     Ảnh của người đã đăng ký: correct (đúng tên), wrong_person (nhận thành người khác), missed (bỏ sót).
     Ảnh người lạ: false_accept (bị nhận nhầm là ai đó), correct_reject (bị từ chối đúng).
     """
-    m = dict.fromkeys(('correct', 'wrong_person', 'missed', 'false_accept', 'correct_reject',
-                       'no_face_genuine', 'no_face_impostor'), 0)
+    m: dict[str, int] = dict.fromkeys(
+        ('correct', 'wrong_person', 'missed', 'false_accept', 'correct_reject',
+         'no_face_genuine', 'no_face_impostor'), 0)
     for label, nearest, distance in records:
         genuine = label in enrolled
         if distance is None:
