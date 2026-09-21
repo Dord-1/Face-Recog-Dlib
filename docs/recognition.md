@@ -1,27 +1,22 @@
-# Giải thích `Recognition.py`
+# Giải thích lõi nhận diện
 
-File này chứa lớp `FaceRecognition` — phần lõi xử lý nhận diện khuôn mặt của dự án, dựa trên thư viện [`face_recognition`](https://github.com/ageitgey/face_recognition) (xây trên `dlib`).
+Tài liệu này giải thích phần lõi nhận diện khuôn mặt của dự án (package `face_recog`), dựa trên thư viện [`face_recognition`](https://github.com/ageitgey/face_recognition) (xây trên `dlib`). Bản đồ toàn bộ dự án: [architecture.md](architecture.md).
 
-## Import và cấu hình
+## Các module của phần lõi
 
-```python
-import math, os, pickle, threading, time
-import cv2
-import face_recognition
-import numpy as np
+Các đoạn code trong tài liệu này thuộc các module sau:
 
-from config import (CACHE_PATH, CACHE_VERSION, DETECT_DIR, DETECT_SCALE, IMAGE_EXTENSIONS,
-                    INV_SCALE, MATCH_THRESHOLD, PROCESS_EVERY_N)
-```
+| Nội dung | Module |
+|---|---|
+| `face_confidence`, `match_face`, `format_label` | [matching.py](../face_recog/matching.py) |
+| `person_name`, cache encoding, `load_known_faces` | [known_faces.py](../face_recog/known_faces.py) |
+| `VideoStream`, `CameraError` | [camera.py](../face_recog/camera.py) |
+| `NameSmoother` | [smoothing.py](../face_recog/smoothing.py) |
+| `scale_locations` | [geometry.py](../face_recog/geometry.py) |
+| `FaceRecognition` (`recognize`, `run_recognition`), `draw_faces` | [recognizer.py](../face_recog/recognizer.py) |
+| Hằng số dùng chung (thư mục `detect/`, `MATCH_THRESHOLD = 0.6`, `RECOGNITION_THRESHOLD`, `DETECT_SCALE = 0.5`, `PROCESS_EVERY_N`, ...) | [config.py](../face_recog/config.py) |
 
-- `cv2`: đọc khung hình từ webcam, vẽ khung/chữ lên ảnh, hiển thị cửa sổ.
-- `face_recognition`: phát hiện vị trí khuôn mặt, mã hoá khuôn mặt thành vector đặc trưng, tính khoảng cách.
-- `numpy`: tìm chỉ số nhỏ nhất trong mảng khoảng cách (`np.argmin`).
-- `math`: dùng trong công thức tính độ tin cậy.
-- `threading`: chạy việc đọc webcam trên 1 thread riêng (xem [`VideoStream`](#lớp-videostream-đọc-webcam-bất-đồng-bộ)) để tránh giật/lag.
-- `time`: đo thời gian giữa các khung hình để tính FPS hiển thị trên màn hình.
-- `pickle`: lưu/đọc cache encoding khuôn mặt (xem [cache encoding](#load_known_faces-và-cache-encoding)).
-- **`config.py`**: mọi hằng số dùng chung (thư mục `detect/`, ngưỡng `MATCH_THRESHOLD = 0.6`, tỉ lệ thu nhỏ `DETECT_SCALE = 0.5`, `PROCESS_EVERY_N`, ...) nằm ở một nơi, dùng chung với `Main.py`, `capture.py` và `Check_Detect.py` để giá trị không bị lệch giữa các file.
+Thư viện chính: `cv2` (đọc/vẽ khung hình), `face_recognition` (dò, mã hoá, khoảng cách), `numpy`, `pickle` (cache encoding), `threading` (đọc webcam ở thread riêng), `math`, `time`. Mọi hằng số nằm ở `config.py` để giá trị không bị lệch giữa các file.
 
 ## Hàm `face_confidence()`
 
@@ -93,7 +88,7 @@ Chỉ dùng công thức tuyến tính đơn giản (không làm cong), vì trư
 | 0.6 | Ngưỡng match | 50% |
 | 0.7 | Không match | 37.5% (công thức tuyến tính đơn giản) |
 
-> **Đặc điểm cần biết**: đây là công thức heuristic nên **không đơn điệu**. Độ tin cậy đạt đỉnh 100% ở distance ≈ 0.2 rồi *giảm nhẹ* khi khuôn mặt giống hơn (distance 0.0 chỉ hiện 97.89%), và có "bước nhảy" lớn từ ~91% (distance 0.5) xuống 50% (distance 0.6) ngay tại ngưỡng. Vì vậy chỉ nên coi con số này là chỉ báo tương đối. Hành vi này được ghi lại trong test `test_known_quirk_peak_is_at_0_2_not_0` ([tests/test_recognition.py](../tests/test_recognition.py)).
+> **Đặc điểm cần biết**: đây là công thức heuristic nên **không đơn điệu**. Độ tin cậy đạt đỉnh 100% ở distance ≈ 0.2 rồi *giảm nhẹ* khi khuôn mặt giống hơn (distance 0.0 chỉ hiện 97.89%), và có "bước nhảy" lớn từ ~91% (distance 0.5) xuống 50% (distance 0.6) ngay tại ngưỡng. Vì vậy chỉ nên coi con số này là chỉ báo tương đối. Hành vi này được ghi lại trong test `test_known_quirk_peak_is_at_0_2_not_0` ([tests/test_matching.py](../tests/test_matching.py)).
 
 **Điểm mấu chốt**: đây **không phải xác suất do model học được**, mà là một công thức chuyển đổi thủ công (heuristic) từ khoảng cách vector sang phần trăm, mục đích chỉ để hiển thị UI cho dễ hiểu — con số càng cao thì hai khuôn mặt càng giống nhau theo cách đo của `face_recognition`, chứ không phải "AI chắc chắn X%" theo nghĩa thống kê.
 
@@ -208,7 +203,7 @@ def person_name(filename):
 
 `Huy_0.jpg`, `Huy_1.jpg` → cùng người `Huy` (bỏ đuôi file và hậu tố `_số` cuối; `Nguyen_Van_A_3.jpg` → `Nguyen_Van_A`). `encode_faces()` áp dụng khi nạp, nên `known_face_names` chứa tên người (lặp lại theo số ảnh) và nhãn hiển thị là `Huy 98%` thay vì `Huy_0.jpg 98%`. Cache vẫn khoá theo tên file, không đổi.
 
-Vì `match_face` chọn **ảnh gần nhất** rồi trả tên người của ảnh đó, thêm nhiều ảnh khác góc/ánh sáng cho một người làm tăng khả năng nhận ra họ (chỉ cần một ảnh đủ giống). Ảnh trùng hệt thì không giúp gì thêm — xem [Check_Detect.md](Check_Detect.md).
+Vì `match_face` chọn **ảnh gần nhất** rồi trả tên người của ảnh đó, thêm nhiều ảnh khác góc/ánh sáng cho một người làm tăng khả năng nhận ra họ (chỉ cần một ảnh đủ giống). Ảnh trùng hệt thì không giúp gì thêm — xem [check_detect.md](check_detect.md).
 
 ### `match_face()` — so khớp một khuôn mặt
 
@@ -229,9 +224,9 @@ Hàm thuần (không đụng webcam/ảnh) nên dễ test:
 2. `face_distance` tính khoảng cách tới từng khuôn mặt đã biết, `np.argmin` chọn khuôn mặt **gần nhất**.
 3. Nếu khoảng cách ≤ ngưỡng (bao gồm cả biên) → trả tên và độ tin cậy; ngược lại `Unknown`.
 
-**Hai ngưỡng khác nhau**: `RECOGNITION_THRESHOLD = 0.5` quyết định *có nhận hay không*; `MATCH_THRESHOLD = 0.6` chỉ là mốc để dựng thang % trong `face_confidence`. Tách ra để siết ngưỡng nhận diện (giảm nhận nhầm người lạ) mà **con số % hiển thị không dịch chuyển**. `0.5` là điểm khởi đầu chặt hơn mặc định 0.6 của thư viện; đánh đổi là đôi lúc không nhận ra chính người đó (ví dụ khuôn mặt cách ảnh đăng ký 0.55 trước đây được nhận, giờ là `Unknown`). Chọn giá trị tốt nhất cần số liệu thật từ `evaluate.py` (hạng mục 5).
+**Hai ngưỡng khác nhau**: `RECOGNITION_THRESHOLD = 0.5` quyết định *có nhận hay không*; `MATCH_THRESHOLD = 0.6` chỉ là mốc để dựng thang % trong `face_confidence`. Tách ra để siết ngưỡng nhận diện (giảm nhận nhầm người lạ) mà **con số % hiển thị không dịch chuyển**. `0.5` là điểm khởi đầu chặt hơn mặc định 0.6 của thư viện; đánh đổi là đôi lúc không nhận ra chính người đó (ví dụ khuôn mặt cách ảnh đăng ký 0.55 trước đây được nhận, giờ là `Unknown`). Chọn giá trị tốt nhất cần số liệu thật từ `evaluate.py` ([evaluate.md](evaluate.md)).
 
-### `NameSmoother` — bỏ phiếu để nhãn không nhấp nháy ([smoothing.py](../smoothing.py))
+### `NameSmoother` — bỏ phiếu để nhãn không nhấp nháy ([smoothing.py](../face_recog/smoothing.py))
 
 Nhận diện chạy 1 trong mỗi `PROCESS_EVERY_N` khung, và từng lần riêng lẻ có thể nhiễu (một lần nhìn ra `Unknown` hoặc tên khác). `NameSmoother` gom kết quả qua nhiều lần:
 
@@ -280,7 +275,7 @@ self.face_names = [format_label(name, confidence) for name, confidence in smooth
 
 Với `0.25`, phải ngồi rất sát camera mới được nhận diện (`MIN_FACE_WIDTH` khi chụp ảnh cũng vô nghĩa vì mặt < ~250 px không được dò ra). Với `0.5`, tổng thời gian `recognize()` ~8 ms cho mỗi lần chạy (mỗi `PROCESS_EVERY_N` khung).
 
-Với mặt nhỏ (~120 px), mã hoá trên khung gốc đưa khoảng cách tới chính người đó xuống rõ rệt (ví dụ 0.084 → 0.024 và 0.138 → 0.072 trong hai ảnh thử) mà khoảng cách tới người khác không đổi (~0.75). Mặt ≥ 250 px thì hai cách gần như như nhau. Lưu ý phép đo này dùng cùng một ảnh gốc cho đăng ký và thử nên là ước lượng lạc quan; đo đầy đủ bằng ảnh khác nhau dùng `evaluate.py` (hạng mục 5).
+Với mặt nhỏ (~120 px), mã hoá trên khung gốc đưa khoảng cách tới chính người đó xuống rõ rệt (ví dụ 0.084 → 0.024 và 0.138 → 0.072 trong hai ảnh thử) mà khoảng cách tới người khác không đổi (~0.75). Mặt ≥ 250 px thì hai cách gần như như nhau. Lưu ý phép đo này dùng cùng một ảnh gốc cho đăng ký và thử nên là ước lượng lạc quan; đo đầy đủ bằng ảnh khác nhau dùng `evaluate.py` ([evaluate.md](evaluate.md)).
 
 ### `draw_faces()` — vẽ kết quả
 

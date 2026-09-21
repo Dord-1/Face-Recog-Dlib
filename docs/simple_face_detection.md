@@ -1,41 +1,54 @@
-# Giải thích `Simple Face Detection.py`
+# Giải thích `examples/simple_face_detection.py`
 
-File này là một script **độc lập**, minh hoạ cách **phát hiện khuôn mặt** (face *detection* — chỉ tìm vị trí khuôn mặt trong ảnh) bằng thuật toán **Haar Cascade** có sẵn trong OpenCV. Đây **không phải** nhận diện danh tính (face *recognition*) như [Recognition.py](Recognition.md) — nó chỉ vẽ khung quanh mọi khuôn mặt tìm được, không biết đó là ai.
+File này là một script **độc lập**, minh hoạ cách **phát hiện khuôn mặt** (face *detection* — chỉ tìm vị trí khuôn mặt trong ảnh) bằng thuật toán **Haar Cascade** có sẵn trong OpenCV. Đây **không phải** nhận diện danh tính (face *recognition*) như [lõi nhận diện](recognition.md) — nó chỉ vẽ khung quanh mọi khuôn mặt tìm được, không biết đó là ai.
 
-Script này thường dùng để kiểm tra nhanh webcam/OpenCV hoạt động tốt trước khi chạy chương trình chính, hoặc để so sánh với cách tiếp cận dùng `face_recognition`/`dlib` trong `Recognition.py`.
+Script này thường dùng để kiểm tra nhanh webcam/OpenCV hoạt động tốt trước khi chạy chương trình chính, hoặc để so sánh với cách tiếp cận dùng `face_recognition`/`dlib` trong `face_recog/recognizer.py`.
+
+Chạy: `python examples/simple_face_detection.py` (nhấn `q` để thoát).
 
 ## Toàn bộ code
 
 ```python
 import pathlib
+
 import cv2
 
-# Load the cascade
-cascade = pathlib.Path(cv2.__file__).parent.absolute() / "data/haarcascade_frontalface_default.xml"
 
-clf = cv2.CascadeClassifier(str(cascade))
-cam = cv2.VideoCapture(0)
+def main():
+    # Load the cascade
+    cascade = pathlib.Path(cv2.__file__).parent.absolute() / "data/haarcascade_frontalface_default.xml"
 
-while True:
-    _, frame = cam.read()
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    faces = clf.detectMultiScale(
-        gray,
-        scaleFactor=1.1,
-        minNeighbors=5,
-        minSize=(30, 30),
-        flags=cv2.CASCADE_SCALE_IMAGE
-    )
+    clf = cv2.CascadeClassifier(str(cascade))
+    cam = cv2.VideoCapture(0)
 
-    for (x, y, w, h) in faces:
-        cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 255, 0), 2)
+    while True:
+        ret, frame = cam.read()
+        if not ret:
+            print("failed to grab frame")
+            break
 
-    cv2.imshow('Face Recognition', frame)
-    if cv2.waitKey(1) == ord('q'):
-        break
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = clf.detectMultiScale(
+            gray,
+            scaleFactor=1.1,
+            minNeighbors=5,
+            minSize=(30, 30),
+            flags=cv2.CASCADE_SCALE_IMAGE
+        )
 
-cam.release()
-cv2.destroyAllWindows()
+        for (x, y, w, h) in faces:
+            cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 255, 0), 2)
+
+        cv2.imshow('Face Recognition', frame)
+        if cv2.waitKey(1) == ord('q'):
+            break
+
+    cam.release()
+    cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    main()
 ```
 
 ## Giải thích từng phần
@@ -65,11 +78,15 @@ Mở thiết bị camera mặc định (index `0`, thường là webcam tích h�
 
 ```python
 while True:
-    _, frame = cam.read()
+    ret, frame = cam.read()
+    if not ret:
+        print("failed to grab frame")
+        break
+
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 ```
 
-- `cam.read()` trả về `(ret, frame)`; ở đây bỏ qua `ret` (dùng `_`) — script **không kiểm tra** xem đọc khung hình có thành công hay không (khác với `Recognition.py` có kiểm tra `ret`). Nếu webcam lỗi, `frame` có thể là `None` và dòng tiếp theo sẽ crash.
+- `cam.read()` trả về `(ret, frame)`; script kiểm tra `ret` và thoát vòng lặp khi không đọc được khung hình (thay vì để `frame` là `None` làm crash ở dòng tiếp theo).
 - Chuyển ảnh sang **thang xám** (`grayscale`) vì Haar Cascade chỉ hoạt động trên ảnh xám (không cần thông tin màu để tìm đặc trưng sáng/tối của khuôn mặt).
 
 ### 4. Phát hiện khuôn mặt
@@ -114,7 +131,7 @@ if cv2.waitKey(1) == ord('q'):
 
 Hiển thị khung hình (kể cả khi không phát hiện khuôn mặt nào, `frame` gốc vẫn được show). Nhấn phím **`q`** để thoát vòng lặp.
 
-> Khác với `Recognition.py` (dùng phím `ESC`), script này dùng phím `q` để thoát — cần lưu ý sự khác biệt khi hướng dẫn người dùng.
+> Khác với ứng dụng chính (dùng phím `ESC`), script này dùng phím `q` để thoát — cần lưu ý sự khác biệt khi hướng dẫn người dùng.
 
 ```python
 cam.release()
@@ -123,9 +140,9 @@ cv2.destroyAllWindows()
 
 Giải phóng webcam và đóng cửa sổ hiển thị.
 
-## So sánh nhanh với `Recognition.py`
+## So sánh nhanh với lõi nhận diện
 
-| | `Simple Face Detection.py` | `Recognition.py` |
+| | `examples/simple_face_detection.py` | `face_recog/recognizer.py` |
 |---|---|---|
 | Mục đích | Chỉ **phát hiện** vị trí khuôn mặt | **Nhận diện danh tính** khuôn mặt |
 | Thuật toán | Haar Cascade (OpenCV, cổ điển) | Deep learning embedding (`dlib`/`face_recognition`) |

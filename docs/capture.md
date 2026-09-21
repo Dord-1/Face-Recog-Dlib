@@ -1,6 +1,6 @@
-# Giải thích `capture.py`
+# Giải thích chụp ảnh đăng ký (`capture.py`, `quality.py`)
 
-Chụp ảnh khuôn mặt từ webcam để đăng ký người dùng. Ảnh xấu (mờ, tối, mặt nghiêng) là nguồn sai số ngay từ đầu vì nhận diện so khớp với chính những ảnh này, nên mỗi khung hình được kiểm tra trước khi cho phép lưu.
+Chụp ảnh khuôn mặt từ webcam để đăng ký người dùng. Việc này chia hai module: [capture.py](../face_recog/capture.py) lo hộp thoại, vòng lặp webcam và lưu ảnh (dùng Tkinter), còn [quality.py](../face_recog/quality.py) chứa các phép đo chất lượng và `check_frame` (thuần xử lý ảnh, không Tkinter nên test được không cần màn hình). Ảnh xấu (mờ, tối, mặt nghiêng) là nguồn sai số ngay từ đầu vì nhận diện so khớp với chính những ảnh này, nên mỗi khung hình được kiểm tra trước khi cho phép lưu.
 
 ## Luồng chụp (`img_capture`)
 
@@ -21,7 +21,7 @@ Kiểm tra lần lượt, dừng ở lỗi đầu tiên (rẻ trước, đắt s
 | 4. Độ nét | `sharpness` ≥ `MIN_SHARPNESS` (0.10) | `Anh bi mo (số)` |
 | 5. Nhìn thẳng | `yaw_ratio` ≤ `MAX_YAW_RATIO` (1.35) | `Hay nhin thang (số)` |
 
-Thông báo không dấu vì `cv2.putText` không vẽ được chữ tiếng Việt có dấu. Khi lỗi có kèm **số đo** để bạn chỉnh ngưỡng trong [config.py](../config.py) cho hợp webcam của mình. Nếu không tính được landmarks thì không chặn việc chụp.
+Thông báo không dấu vì `cv2.putText` không vẽ được chữ tiếng Việt có dấu. Khi lỗi có kèm **số đo** để bạn chỉnh ngưỡng trong [config.py](../face_recog/config.py) cho hợp webcam của mình. Nếu không tính được landmarks thì không chặn việc chụp.
 
 ### Độ nét (`sharpness`)
 

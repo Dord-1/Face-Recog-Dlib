@@ -10,17 +10,26 @@
 
 ## Cấu trúc dự án
 
-| File | Mô tả |
-|---|---|
-| [Main.py](Main.py) | Điểm khởi chạy chương trình. Dựng cửa sổ GUI với hai chức năng chính: thêm ảnh khuôn mặt và nhận diện khuôn mặt. |
-| [capture.py](capture.py) | Chụp ảnh khuôn mặt từ webcam: kiểm tra trực tiếp (đúng 1 khuôn mặt, đủ lớn, đủ sáng, nét, nhìn thẳng) và lưu vào `detect/`. |
-| [Recognition.py](Recognition.py) | Nhận diện: nạp ảnh trong `detect/` (có cache encoding), so khớp và vẽ khuôn mặt từ webcam bằng thư viện `face_recognition`; lớp `VideoStream` đọc webcam ở thread riêng. |
-| [config.py](config.py) | Hằng số dùng chung (thư mục `detect/`, ngưỡng nhận diện, tỉ lệ thu nhỏ, ...). |
-| [Check_Detect.py](Check_Detect.py) | Script kiểm tra và dọn ảnh trùng / ảnh lỗi trong `detect/`. |
-| [Simple Face Detection.py](Simple%20Face%20Detection.py) | Script độc lập, minh hoạ phát hiện khuôn mặt (không nhận diện danh tính) bằng Haar Cascade của OpenCV. |
-| [evaluate.py](evaluate.py) | Đo độ chính xác nhận diện bằng ảnh có nhãn trong `eval/` và gợi ý ngưỡng (xem [docs/Evaluate.md](docs/Evaluate.md)). |
-| [smoothing.py](smoothing.py) | `NameSmoother`: bỏ phiếu qua nhiều lần nhận diện để nhãn không nhấp nháy. |
-| [tests/](tests/) | Bộ test pytest (không cần webcam). |
+```
+Main.py, Check_Detect.py, evaluate.py   # script mỏng ở gốc (giữ nguyên các lệnh chạy quen thuộc)
+face_recog/                             # toàn bộ logic, mỗi module một trách nhiệm
+├── config.py        # hằng số dùng chung (thư mục detect/, ngưỡng nhận diện, tỉ lệ thu nhỏ, ...)
+├── geometry.py      # tiện ích khung mặt
+├── camera.py        # VideoStream: đọc webcam ở thread riêng
+├── known_faces.py   # ảnh đăng ký trong detect/, tên người, cache encoding
+├── matching.py      # khoảng cách -> tên + độ tin cậy (%)
+├── smoothing.py     # NameSmoother: bỏ phiếu để nhãn không nhấp nháy
+├── recognizer.py    # điều phối nhận diện thời gian thực
+├── quality.py       # kiểm tra chất lượng ảnh khi chụp (sáng, nét, nhìn thẳng)
+├── capture.py       # chụp ảnh đăng ký từ webcam
+├── gui.py           # cửa sổ chính (Tkinter)
+└── tools/           # check_detect.py (dọn ảnh trùng/lỗi), evaluate.py (đo độ chính xác)
+examples/            # simple_face_detection.py: demo Haar Cascade độc lập
+tests/               # test pytest theo module (không cần webcam)
+docs/                # tài liệu; bắt đầu từ docs/architecture.md
+```
+
+Bản đồ chi tiết, luật phụ thuộc giữa các module và "muốn sửa X thì vào đâu": [docs/architecture.md](docs/architecture.md).
 
 ## Yêu cầu cài đặt
 
@@ -62,14 +71,14 @@ Nhận diện khuôn mặt có thể chạy chậm trên máy cấu hình yếu,
 ### Chạy chương trình
 
 ```bash
-python Main.py
+python Main.py          # hoặc: python -m face_recog
 ```
 
 Cửa sổ GUI sẽ hiện ra với hai nút bấm:
 
 1. **Thêm ảnh vào hệ thống**
    - Nhập tên khi được hỏi.
-   - Khung hình hiển thị viền **xanh** khi ảnh hợp lệ (đúng 1 khuôn mặt, đủ lớn, đủ sáng, nét, nhìn thẳng) và **đỏ** kèm lý do và số đo khi chưa hợp lệ (ngưỡng chỉnh trong [config.py](config.py); chi tiết: [docs/Capture.md](docs/Capture.md)).
+   - Khung hình hiển thị viền **xanh** khi ảnh hợp lệ (đúng 1 khuôn mặt, đủ lớn, đủ sáng, nét, nhìn thẳng) và **đỏ** kèm lý do và số đo khi chưa hợp lệ (ngưỡng chỉnh trong [config.py](face_recog/config.py); chi tiết: [docs/capture.md](docs/capture.md)).
    - Nhấn phím `SPACEBAR` để chụp; ảnh chỉ được lưu khi viền xanh. Chụp lại cùng tên sẽ không ghi đè ảnh cũ.
    - Nhấn `ESC` để đóng cửa sổ webcam khi đã chụp xong.
 
@@ -81,7 +90,7 @@ Cửa sổ GUI sẽ hiện ra với hai nút bấm:
 ### Chạy thử phát hiện khuôn mặt đơn giản (tuỳ chọn)
 
 ```bash
-python "Simple Face Detection.py"
+python examples/simple_face_detection.py
 ```
 
 Script này chỉ khoanh vùng khuôn mặt bằng khung chữ nhật (không nhận diện danh tính), dùng để kiểm tra nhanh webcam/OpenCV hoạt động tốt. Nhấn `q` để thoát.
@@ -95,7 +104,7 @@ python Check_Detect.py            # chỉ báo cáo, không xoá gì
 python Check_Detect.py --delete   # xoá sau khi xác nhận từng nhóm
 ```
 
-Script gom các ảnh gần như giống hệt nhau, đề xuất giữ ảnh có khuôn mặt lớn nhất và chỉ xoá những ảnh bạn xác nhận. Chi tiết: [docs/Check_Detect.md](docs/Check_Detect.md).
+Script gom các ảnh gần như giống hệt nhau, đề xuất giữ ảnh có khuôn mặt lớn nhất và chỉ xoá những ảnh bạn xác nhận. Chi tiết: [docs/check_detect.md](docs/check_detect.md).
 
 ### Đo độ chính xác nhận diện (tuỳ chọn)
 
@@ -105,7 +114,7 @@ Script gom các ảnh gần như giống hệt nhau, đề xuất giữ ảnh c�
 python evaluate.py --mode both
 ```
 
-Công cụ báo tỉ lệ nhận đúng / nhận nhầm / bỏ sót theo từng ngưỡng và gợi ý `RECOGNITION_THRESHOLD`. Cách chuẩn bị dữ liệu và đọc kết quả: [docs/Evaluate.md](docs/Evaluate.md).
+Công cụ báo tỉ lệ nhận đúng / nhận nhầm / bỏ sót theo từng ngưỡng và gợi ý `RECOGNITION_THRESHOLD`. Cách chuẩn bị dữ liệu và đọc kết quả: [docs/evaluate.md](docs/evaluate.md).
 
 ## Phát triển
 
@@ -118,7 +127,7 @@ pytest          # chạy test (không cần webcam)
 ruff check .    # kiểm tra lint
 ```
 
-Hằng số dùng chung (ngưỡng nhận diện, tỉ lệ thu nhỏ, số khung bỏ qua, ...) nằm trong [config.py](config.py) — sửa ở đó thay vì sửa rải rác nhiều file.
+Hằng số dùng chung (ngưỡng nhận diện, tỉ lệ thu nhỏ, số khung bỏ qua, ...) nằm trong [face_recog/config.py](face_recog/config.py) — sửa ở đó thay vì sửa rải rác nhiều file. Cấu trúc module và luật phụ thuộc (được `tests/test_architecture.py` kiểm tra) xem [docs/architecture.md](docs/architecture.md).
 
 ## Ghi công
 

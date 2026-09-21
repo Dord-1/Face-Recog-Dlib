@@ -1,6 +1,8 @@
 # Giải thích `evaluate.py`
 
-Công cụ **đo độ chính xác nhận diện** bằng ảnh có nhãn, để chọn ngưỡng và kiểm tra thay đổi dựa trên số liệu thay vì cảm giác. Nó mô phỏng đúng pipeline chạy trực tiếp ([Recognition.md](Recognition.md)): đưa ảnh về khung 640 rộng như webcam, dò trên khung thu nhỏ (`DETECT_SCALE`), rồi mã hoá.
+Logic nằm ở [face_recog/tools/evaluate.py](../face_recog/tools/evaluate.py); file `evaluate.py` ở gốc chỉ gọi vào đó nên lệnh `python evaluate.py` giữ nguyên.
+
+Công cụ **đo độ chính xác nhận diện** bằng ảnh có nhãn, để chọn ngưỡng và kiểm tra thay đổi dựa trên số liệu thay vì cảm giác. Nó mô phỏng đúng pipeline chạy trực tiếp ([recognition.md](recognition.md)): đưa ảnh về khung 640 rộng như webcam, dò trên khung thu nhỏ (`DETECT_SCALE`), rồi mã hoá.
 
 ## Chuẩn bị dữ liệu
 
@@ -52,7 +54,7 @@ Với mỗi ảnh test, công cụ tính **một lần** khoảng cách tới ng
 
 Phần đầu báo cáo còn cho **khoảng cách nhỏ nhất / trung bình / lớn nhất** của nhóm đúng người và nhóm người lạ. Hai nhóm tách xa nhau thì có ngưỡng tốt; chồng lấn thì không ngưỡng nào tránh được lỗi.
 
-**Gợi ý ngưỡng**: ngưỡng ít lỗi nhận nhầm nhất (nhận nhầm người + người lạ bị nhận), sau đó nhận đúng nhiều nhất, sau đó nhỏ nhất. Chỉ hiển thị khi có **cả** ảnh đúng người lẫn người lạ (đã dò ra mặt); nếu không sẽ báo "Chưa đủ dữ liệu" thay vì in con số vô nghĩa. Ngưỡng gợi ý áp dụng bằng cách sửa `RECOGNITION_THRESHOLD` trong [config.py](../config.py).
+**Gợi ý ngưỡng**: ngưỡng ít lỗi nhận nhầm nhất (nhận nhầm người + người lạ bị nhận), sau đó nhận đúng nhiều nhất, sau đó nhỏ nhất. Chỉ hiển thị khi có **cả** ảnh đúng người lẫn người lạ (đã dò ra mặt); nếu không sẽ báo "Chưa đủ dữ liệu" thay vì in con số vô nghĩa. Ngưỡng gợi ý áp dụng bằng cách sửa `RECOGNITION_THRESHOLD` trong [config.py](../face_recog/config.py).
 
 Ảnh không dò ra mặt được đếm riêng (cột "không thấy mặt") chứ không tính là "bỏ sót", vì đó là giới hạn của bước dò chứ không phải của ngưỡng.
 
