@@ -3,8 +3,7 @@ import os
 
 import face_recognition
 
-IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png')
-MATCH_THRESHOLD = 0.6  # cùng ngưỡng với face_confidence() trong Recognition.py
+from config import DETECT_DIR, IMAGE_EXTENSIONS, MATCH_THRESHOLD
 
 
 def face_area(location):
@@ -24,7 +23,11 @@ def scan_folder(folder):
         if not name.lower().endswith(IMAGE_EXTENSIONS):
             continue
 
-        image = face_recognition.load_image_file(os.path.join(folder, name))
+        try:
+            image = face_recognition.load_image_file(os.path.join(folder, name))
+        except (OSError, ValueError):  # file hỏng / không phải ảnh thật
+            no_face.append(name)
+            continue
         locations = face_recognition.face_locations(image)
         if not locations:
             no_face.append(name)
@@ -85,9 +88,9 @@ def ask_keep(group):
 
 def main():
     parser = argparse.ArgumentParser(description='Kiểm tra và dọn ảnh trùng trong thư mục detect.')
-    parser.add_argument('--dir', default='detect', help='thư mục ảnh (mặc định: detect)')
+    parser.add_argument('--dir', default=DETECT_DIR, help=f'thư mục ảnh (mặc định: {DETECT_DIR})')
     parser.add_argument('--threshold', type=float, default=MATCH_THRESHOLD,
-                        help='ngưỡng khoảng cách coi là cùng 1 người (mặc định: 0.6)')
+                        help=f'ngưỡng khoảng cách coi là cùng 1 người (mặc định: {MATCH_THRESHOLD})')
     parser.add_argument('--delete', action='store_true',
                         help='cho phép xoá ảnh (sau khi xác nhận từng nhóm). Mặc định chỉ báo cáo.')
     args = parser.parse_args()
@@ -103,7 +106,7 @@ def main():
           f'Nhóm trùng: {len(groups)}')
 
     if no_face:
-        print('\nẢnh KHÔNG có khuôn mặt (làm Recognition.encode_faces() bị lỗi):')
+        print('\nẢnh KHÔNG có khuôn mặt hoặc không đọc được (Recognition sẽ bỏ qua):')
         for name in no_face:
             print(f'  - {name}')
     if multi_face:

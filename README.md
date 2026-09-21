@@ -12,9 +12,13 @@
 
 | File | Mô tả |
 |---|---|
-| [Main.py](Main.py) | Điểm khởi chạy chương trình. Hiển thị cửa sổ GUI với hai chức năng chính: thêm ảnh khuôn mặt và nhận diện khuôn mặt. |
-| [Recognition.py](Recognition.py) | Lớp `FaceRecognition` — nạp ảnh khuôn mặt đã lưu trong thư mục `detect/`, mã hoá (encode) và so khớp khuôn mặt trực tiếp từ webcam bằng thư viện `face_recognition`. |
+| [Main.py](Main.py) | Điểm khởi chạy chương trình. Dựng cửa sổ GUI với hai chức năng chính: thêm ảnh khuôn mặt và nhận diện khuôn mặt. |
+| [capture.py](capture.py) | Chụp ảnh khuôn mặt từ webcam: kiểm tra trực tiếp (đúng 1 khuôn mặt, đủ lớn) và lưu vào `detect/`. |
+| [Recognition.py](Recognition.py) | Nhận diện: nạp ảnh trong `detect/` (có cache encoding), so khớp và vẽ khuôn mặt từ webcam bằng thư viện `face_recognition`; lớp `VideoStream` đọc webcam ở thread riêng. |
+| [config.py](config.py) | Hằng số dùng chung (thư mục `detect/`, ngưỡng nhận diện, tỉ lệ thu nhỏ, ...). |
+| [Check_Detect.py](Check_Detect.py) | Script kiểm tra và dọn ảnh trùng / ảnh lỗi trong `detect/`. |
 | [Simple Face Detection.py](Simple%20Face%20Detection.py) | Script độc lập, minh hoạ phát hiện khuôn mặt (không nhận diện danh tính) bằng Haar Cascade của OpenCV. |
+| [tests/](tests/) | Bộ test pytest (không cần webcam). |
 
 ## Yêu cầu cài đặt
 
@@ -90,6 +94,19 @@ python Check_Detect.py --delete   # xoá sau khi xác nhận từng nhóm
 ```
 
 Script gom các ảnh của cùng một người, đề xuất giữ ảnh có khuôn mặt lớn nhất và chỉ xoá những ảnh bạn xác nhận. Chi tiết: [docs/Check_Detect.md](docs/Check_Detect.md).
+
+## Phát triển
+
+Cài thêm công cụ dev (pytest, ruff) trong venv:
+
+```bash
+pip install -r requirements-dev.txt
+
+pytest          # chạy test (không cần webcam)
+ruff check .    # kiểm tra lint
+```
+
+Hằng số dùng chung (ngưỡng nhận diện, tỉ lệ thu nhỏ, số khung bỏ qua, ...) nằm trong [config.py](config.py) — sửa ở đó thay vì sửa rải rác nhiều file.
 
 ## Ghi công
 

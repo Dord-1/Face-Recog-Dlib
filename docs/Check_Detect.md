@@ -18,13 +18,13 @@ python Check_Detect.py --dir detect --threshold 0.6
 | Tham số | Ý nghĩa |
 |---|---|
 | `--dir` | Thư mục ảnh (mặc định `detect`) |
-| `--threshold` | Ngưỡng khoảng cách coi là cùng một người (mặc định `0.6`, cùng ngưỡng với `face_confidence()` trong [Recognition.py](../Recognition.py)) |
+| `--threshold` | Ngưỡng khoảng cách coi là cùng một người (mặc định `MATCH_THRESHOLD = 0.6` trong [config.py](../config.py), cùng ngưỡng với nhận diện) |
 | `--delete` | Cho phép xoá ảnh sau khi bạn xác nhận. Không có cờ này script chỉ báo cáo |
 
 ## Cách hoạt động
 
 1. **Quét** (`scan_folder`): chỉ xét file `.jpg/.jpeg/.png` (bỏ qua `.DS_Store`...). Mỗi ảnh được mã hoá bằng `face_recognition`.
-   - Không có khuôn mặt → vào danh sách "ảnh lỗi".
+   - Không có khuôn mặt, hoặc file hỏng / không phải ảnh thật → vào danh sách "ảnh lỗi" (không làm script crash).
    - Nhiều khuôn mặt → lấy khuôn mặt lớn nhất (theo diện tích) và cảnh báo.
 2. **Gom nhóm** (`group_same_person`): so `face_distance` từng cặp ảnh; khoảng cách ≤ ngưỡng thì cùng nhóm (union-find, nên A~B và B~C sẽ gộp cả A, B, C). Nhóm theo khuôn mặt chứ không theo tiền tố tên file, vì có thể nhập tên khác nhau cho cùng một người.
 3. **Đề xuất** giữ ảnh có khuôn mặt lớn nhất trong nhóm.

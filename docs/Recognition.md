@@ -2,33 +2,33 @@
 
 File này chứa lớp `FaceRecognition` — phần lõi xử lý nhận diện khuôn mặt của dự án, dựa trên thư viện [`face_recognition`](https://github.com/ageitgey/face_recognition) (xây trên `dlib`).
 
-## Import
+## Import và cấu hình
 
 ```python
+import math, os, pickle, threading, time
 import cv2
 import face_recognition
-import os, sys
 import numpy as np
-import math
-import threading
-import time
-import pickle
+
+from config import (CACHE_PATH, CACHE_VERSION, DETECT_DIR, DETECT_SCALE, IMAGE_EXTENSIONS,
+                    INV_SCALE, MATCH_THRESHOLD, PROCESS_EVERY_N)
 ```
 
 - `cv2`: đọc khung hình từ webcam, vẽ khung/chữ lên ảnh, hiển thị cửa sổ.
-- `face_recognition`: phát hiện vị trí khuôn mặt, mã hoá khuôn mặt thành vector đặc trưng, so khớp và tính khoảng cách.
+- `face_recognition`: phát hiện vị trí khuôn mặt, mã hoá khuôn mặt thành vector đặc trưng, tính khoảng cách.
 - `numpy`: tìm chỉ số nhỏ nhất trong mảng khoảng cách (`np.argmin`).
 - `math`: dùng trong công thức tính độ tin cậy.
 - `threading`: chạy việc đọc webcam trên 1 thread riêng (xem [`VideoStream`](#lớp-videostream-đọc-webcam-bất-đồng-bộ)) để tránh giật/lag.
 - `time`: đo thời gian giữa các khung hình để tính FPS hiển thị trên màn hình.
-- `pickle`: lưu/đọc cache encoding khuôn mặt (xem [`encode_faces`](#encode_facesself-và-cache-encoding)).
+- `pickle`: lưu/đọc cache encoding khuôn mặt (xem [cache encoding](#load_known_faces-và-cache-encoding)).
+- **`config.py`**: mọi hằng số dùng chung (thư mục `detect/`, ngưỡng `MATCH_THRESHOLD = 0.6`, tỉ lệ thu nhỏ `DETECT_SCALE = 0.25`, `PROCESS_EVERY_N`, ...) nằm ở một nơi, dùng chung với `Main.py`, `capture.py` và `Check_Detect.py` để giá trị không bị lệch giữa các file.
 
 ## Hàm `face_confidence()`
 
 ```python
-def face_confidence(face_distance, face_match_threshold=0.6):
-    range = (1.0 - face_match_threshold)
-    linear_val = (1.0 - face_distance) / (range * 2.0)
+def face_confidence(face_distance, face_match_threshold=MATCH_THRESHOLD):
+    span = (1.0 - face_match_threshold)
+    linear_val = (1.0 - face_distance) / (span * 2.0)
 
     if face_distance > face_match_threshold:
         return str(round(linear_val * 100, 2)) + "%"
@@ -52,8 +52,8 @@ Vấn đề: distance là một con số nghịch (nhỏ = tốt), không trực
 ### Nhánh `else` (trường hợp match — distance ≤ 0.6, đây là trường hợp chính)
 
 ```python
-range = (1.0 - face_match_threshold)                  # = 1.0 - 0.6 = 0.4
-linear_val = (1.0 - face_distance) / (range * 2.0)     # = (1 - distance) / 0.8
+span = (1.0 - face_match_threshold)                   # = 1.0 - 0.6 = 0.4
+linear_val = (1.0 - face_distance) / (span * 2.0)      # = (1 - distance) / 0.8
 ```
 
 **Bước 1 — `linear_val`**: quy đổi tuyến tính distance ∈ [0, 0.6] thành một giá trị:
@@ -86,9 +86,14 @@ Chỉ dùng công thức tuyến tính đơn giản (không làm cong), vì trư
 
 | Distance | Ý nghĩa | Confidence % |
 |---|---|---|
-| 0.0 | Giống hệt | ~100% |
-| 0.6 | Ngưỡng match | ~50% |
-| > 0.6 | Không match | < 50%, tính đơn giản hơn |
+| 0.0 | Giống hệt | 97.89% |
+| 0.2 | Rất giống | 100% (đỉnh) |
+| 0.4 | Giống | 96.76% |
+| 0.5 | Khá giống | 90.92% |
+| 0.6 | Ngưỡng match | 50% |
+| 0.7 | Không match | 37.5% (công thức tuyến tính đơn giản) |
+
+> **Đặc điểm cần biết**: đây là công thức heuristic nên **không đơn điệu**. Độ tin cậy đạt đỉnh 100% ở distance ≈ 0.2 rồi *giảm nhẹ* khi khuôn mặt giống hơn (distance 0.0 chỉ hiện 97.89%), và có "bước nhảy" lớn từ ~91% (distance 0.5) xuống 50% (distance 0.6) ngay tại ngưỡng. Vì vậy chỉ nên coi con số này là chỉ báo tương đối. Hành vi này được ghi lại trong test `test_known_quirk_peak_is_at_0_2_not_0` ([tests/test_recognition.py](../tests/test_recognition.py)).
 
 **Điểm mấu chốt**: đây **không phải xác suất do model học được**, mà là một công thức chuyển đổi thủ công (heuristic) từ khoảng cách vector sang phần trăm, mục đích chỉ để hiển thị UI cho dễ hiểu — con số càng cao thì hai khuôn mặt càng giống nhau theo cách đo của `face_recognition`, chứ không phải "AI chắc chắn X%" theo nghĩa thống kê.
 
@@ -102,7 +107,8 @@ class VideoStream:
         self.stream.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
 
         if not self.stream.isOpened():
-            sys.exit('Camera not found')
+            self.stream.release()
+            raise CameraError('Không tìm thấy hoặc không mở được webcam')
 
         self.lock = threading.Lock()
         self.ret, self.frame = self.stream.read()
@@ -132,7 +138,7 @@ Ban đầu code đọc webcam trực tiếp bằng `cv2.VideoCapture(0).read()` 
 
 `VideoStream` giải quyết vấn đề này bằng cách tách việc đọc camera ra **1 thread nền riêng**:
 
-- `__init__`: mở camera, **set độ phân giải tường minh** (`width=640, height=480` — mặc định) để giảm tải cho cả bước đọc lẫn resize sau này, rồi khởi động thread nền `_update`.
+- `__init__`: mở camera, **set độ phân giải tường minh** (`width=640, height=480` — mặc định) để giảm tải cho cả bước đọc lẫn resize sau này, rồi khởi động thread nền `_update`. Nếu không mở được camera thì ném `CameraError` (thay vì `sys.exit` như trước, vốn chỉ ném `SystemExit` khó hiểu khi chạy trong callback của Tkinter); `Main.py` bắt lỗi này và hiện hộp thoại báo lỗi.
 - `_update` (chạy trên thread nền): liên tục gọi `stream.read()` trong vòng lặp riêng, **luôn ghi đè** `self.frame` bằng khung hình mới nhất — **không dùng queue**, nên không có chuyện dồn (backlog) khung hình cũ.
 - `read()` (gọi từ thread chính): lấy khung hình mới nhất hiện có tại thời điểm gọi. Dùng `threading.Lock` để tránh race condition khi thread nền đang ghi đè `self.frame` cùng lúc thread chính đang đọc; `.copy()` đảm bảo thread chính có bản sao riêng, không bị thread nền ghi đè giữa chừng khi đang xử lý.
 - `stop()`: báo dừng thread nền, chờ nó kết thúc (`join`), rồi giải phóng camera — tránh thread bị treo hoặc lỗi khi đóng chương trình.
@@ -143,7 +149,7 @@ Kết quả: dù bước nhận diện AI chạy chậm, luồng hiển thị lu
 
 ```python
 class FaceRecognition:
-    PROCESS_EVERY_N = 3
+    PROCESS_EVERY_N = PROCESS_EVERY_N  # lấy từ config.py (mặc định 3)
 
     def __init__(self):
         self.face_locations = []
@@ -157,7 +163,7 @@ class FaceRecognition:
 
 | Thuộc tính | Ý nghĩa |
 |---|---|
-| `PROCESS_EVERY_N` | Hằng số cấp lớp: chỉ chạy nhận diện trên **1 trong mỗi N khung hình** (mặc định `3`). Tăng giá trị này để giảm tải CPU trên máy yếu, đổi lại độ trễ nhận diện tăng nhẹ. |
+| `PROCESS_EVERY_N` | Chỉ chạy nhận diện trên **1 trong mỗi N khung hình** (mặc định `3`, cấu hình trong `config.py`). Tăng giá trị này để giảm tải CPU trên máy yếu, đổi lại độ trễ nhận diện tăng nhẹ. |
 | `face_locations` | Toạ độ (top, right, bottom, left) của các khuôn mặt phát hiện được trong khung hình hiện tại |
 | `face_encodings` | Vector đặc trưng 128 chiều của từng khuôn mặt trong khung hình hiện tại |
 | `face_names` | Tên (+ độ tin cậy) tương ứng với từng khuôn mặt, để hiển thị lên ảnh |
@@ -171,99 +177,108 @@ class FaceRecognition:
 
 Khởi tạo toàn bộ state rỗng cho instance, rồi gọi `encode_faces()` để nạp dữ liệu khuôn mặt đã lưu.
 
-### `encode_faces(self)` và cache encoding
+### `load_known_faces()` và cache encoding
 
-Nạp encoding của mọi ảnh trong `detect/`. Bước tốn kém nhất là `face_recognition.face_encodings()` (chạy model deep learning để biến ảnh thành vector 128 số, cỡ vài trăm ms mỗi ảnh), và kết quả không đổi nếu ảnh không đổi. Vì vậy encoding được **cache** trong file `detect/.encodings.pkl`:
+`encode_faces()` chỉ gọi hàm module `load_known_faces(detect_dir, cache_path, encoder)` (nhận đường dẫn và hàm mã hoá làm tham số nên test được mà không cần ảnh/webcam thật) rồi in tóm tắt. Hàm này nạp encoding của mọi ảnh trong `detect/`. Bước tốn kém nhất là `face_recognition.face_encodings()` (chạy model deep learning để biến ảnh thành vector 128 số, cỡ vài trăm ms mỗi ảnh), và kết quả không đổi nếu ảnh không đổi. Vì vậy encoding được **cache** trong file `detect/.encodings.pkl`:
 
 ```python
 cached = cache.get(image)
 if cached and cached['mtime'] == mtime:
-    encoding = cached['encoding']          # ảnh không đổi -> dùng lại
+    encoding = cached['encoding']   # ảnh không đổi -> dùng lại
 else:
-    found = face_recognition.face_encodings(face_recognition.load_image_file(path))
-    encoding = found[0] if found else None # ảnh mới/đã sửa -> mã hoá
+    encoding = encoder(path)        # ảnh mới/đã sửa -> mã hoá (encode_image)
 ```
 
 - **Khoá cache là `mtime`** (thời điểm sửa file): thêm ảnh mới chỉ mã hoá ảnh đó; chụp lại/sửa ảnh cùng tên thì `mtime` đổi nên mã hoá lại; ảnh đã xoá tự biến mất khỏi cache vì cache được ghi lại theo danh sách ảnh hiện có.
 - **Chỉ xét file `.jpg/.jpeg/.png`**, nên `.DS_Store` và chính file cache bị bỏ qua.
-- **Ảnh lỗi không còn làm crash**: ảnh không có khuôn mặt hoặc không đọc được có `encoding = None`, bị bỏ qua và được cảnh báo khi khởi động. Kết quả này cũng được cache nên không phải thử lại mỗi lần.
+- **Ảnh lỗi không còn làm crash**: `encode_image()` trả về `None` cho ảnh không có khuôn mặt hoặc không đọc được (bắt `OSError`/`ValueError`, không nuốt mọi lỗi). Ảnh đó bị bỏ qua và được cảnh báo khi khởi động; kết quả cũng được cache nên không phải thử lại mỗi lần.
 - **An toàn**: file cache hỏng, không có, hoặc khác `CACHE_VERSION` thì tự mã hoá lại từ đầu; ghi cache qua file tạm rồi `os.replace` để không bị hỏng nếu tắt giữa chừng. Khi đổi cách mã hoá, tăng `CACHE_VERSION` để bỏ cache cũ.
 - File cache nằm trong `detect/` nên đã được `.gitignore` bỏ qua.
 
 Khi khởi động, chương trình in tóm tắt, ví dụ `Đã nạp 12 ảnh (11 từ cache, 1 mã hoá mới)`.
 
-### `run_recognition(self)`
-
-Vòng lặp chính, chạy webcam và nhận diện theo thời gian thực:
+### `match_face()` — so khớp một khuôn mặt
 
 ```python
-video_stream = VideoStream(0)
+def match_face(encoding, known_encodings, known_names, threshold=MATCH_THRESHOLD):
+    if len(known_encodings) == 0:
+        return 'Unknown', 'Unknown'
+
+    distances = face_recognition.face_distance(known_encodings, encoding)
+    best = int(np.argmin(distances))
+    if distances[best] <= threshold:
+        return known_names[best], face_confidence(distances[best], threshold)
+    return 'Unknown', 'Unknown'
 ```
 
-Mở webcam qua `VideoStream` (thay vì `cv2.VideoCapture` trực tiếp như trước) để việc đọc camera chạy trên thread nền, tránh giật/lag như giải thích ở phần [`VideoStream`](#lớp-videostream-đọc-webcam-bất-đồng-bộ) phía trên.
+Hàm thuần (không đụng webcam/ảnh) nên dễ test:
+1. Không có khuôn mặt đã lưu → `Unknown` (không crash như `np.argmin` trên mảng rỗng).
+2. `face_distance` tính khoảng cách tới từng khuôn mặt đã biết, `np.argmin` chọn khuôn mặt **gần nhất**.
+3. Nếu khoảng cách ≤ ngưỡng (bao gồm cả biên) → trả tên và độ tin cậy; ngược lại `Unknown`.
+
+Cách này tương đương `compare_faces` (vốn chỉ so `distance <= 0.6`) nhưng bỏ được lượt so khớp thừa.
+
+### `recognize(self, frame)`
+
+Dò và nhận diện khuôn mặt trong một khung hình, cập nhật `face_locations` và `face_names`:
 
 ```python
-while True:
-    ret, frame = video_stream.read()
-    if not ret or frame is None:
-        continue
+small_frame = cv2.resize(frame, (0, 0), fx=DETECT_SCALE, fy=DETECT_SCALE)
+rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
 
-    if self.frame_count % self.PROCESS_EVERY_N == 0:
-        small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
-        rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
-        ...
-    self.frame_count += 1
-```
-
-- `video_stream.read()` luôn trả về khung hình mới nhất hiện có từ thread nền. Nếu chưa có khung hình hợp lệ (`ret` sai hoặc `frame` rỗng — có thể xảy ra ngay lúc mới khởi động camera), bỏ qua vòng lặp này (`continue`) thay vì crash.
-- **Tối ưu hiệu năng**: chỉ chạy nhận diện (bước tốn CPU nhất) khi `frame_count % PROCESS_EVERY_N == 0`, tức **1 trong mỗi 3 khung hình** theo mặc định — thay cho cách cũ đảo bool xử lý 1/2 khung. Cách dùng bộ đếm chia hết cho phép tinh chỉnh linh hoạt hơn (chỉ cần đổi `PROCESS_EVERY_N`) để cân bằng giữa độ mượt và tải CPU tuỳ cấu hình máy.
-- Ảnh được resize xuống còn **25%** kích thước gốc (`fx=0.25, fy=0.25`) trước khi nhận diện, giúp giảm đáng kể thời gian xử lý.
-- OpenCV đọc ảnh theo thứ tự màu **BGR**, trong khi `face_recognition` cần **RGB**, nên phải chuyển đổi bằng `cv2.cvtColor(..., cv2.COLOR_BGR2RGB)`.
-
-```python
 self.face_locations = face_recognition.face_locations(rgb_small_frame, number_of_times_to_upsample=0)
 self.face_encodings = face_recognition.face_encodings(rgb_small_frame, self.face_locations)
-```
 
-Phát hiện vị trí tất cả khuôn mặt trong khung hình nhỏ, rồi mã hoá từng khuôn mặt thành vector đặc trưng.
-
-- `number_of_times_to_upsample=0` (mặc định của thư viện là `1`): bỏ bước phóng to ảnh lên để tìm khuôn mặt nhỏ/xa camera, đổi lấy tốc độ nhanh hơn. Đánh đổi hợp lý cho use-case chính là người dùng đứng gần webcam.
-
-```python
+self.face_names = []
 for face_encoding in self.face_encodings:
-    matches = face_recognition.compare_faces(self.known_face_encodings, face_encoding)
-    name = 'Unknown'
-    confidence = 'Unknown'
-
-    face_distances = face_recognition.face_distance(self.known_face_encodings, face_encoding)
-    best_match_index = np.argmin(face_distances)
-
-    if matches[best_match_index]:
-        name = self.known_face_names[best_match_index]
-        confidence = face_confidence(face_distances[best_match_index])
+    name, confidence = match_face(face_encoding, self.known_face_encodings, self.known_face_names)
     self.face_names.append(f'{name} {confidence}')
 ```
 
-Với mỗi khuôn mặt phát hiện được trong khung hình:
-1. `compare_faces`: so khớp với toàn bộ `known_face_encodings`, trả về mảng `True/False`.
-2. `face_distance`: tính khoảng cách tới từng khuôn mặt đã biết.
-3. `np.argmin`: tìm khuôn mặt đã biết **gần nhất** (khoảng cách nhỏ nhất).
-4. Nếu khuôn mặt gần nhất đó cũng nằm trong danh sách match (`matches[best_match_index] == True`) → gán tên và tính confidence. Ngược lại giữ `name = 'Unknown'`.
+- Ảnh được resize xuống còn **25%** (`DETECT_SCALE`) trước khi nhận diện, giúp giảm đáng kể thời gian xử lý.
+- OpenCV đọc ảnh theo thứ tự màu **BGR**, trong khi `face_recognition` cần **RGB**, nên phải chuyển đổi bằng `cv2.cvtColor(..., cv2.COLOR_BGR2RGB)`.
+- `number_of_times_to_upsample=0` (mặc định của thư viện là `1`): bỏ bước phóng to ảnh lên để tìm khuôn mặt nhỏ/xa camera, đổi lấy tốc độ nhanh hơn. Đánh đổi hợp lý cho use-case chính là người dùng đứng gần webcam.
+
+### `draw_faces()` — vẽ kết quả
 
 ```python
-for (top, right, bottom, left), name in zip(self.face_locations, self.face_names):
-    top *= 4
-    right *= 4
-    bottom *= 4
-    left *= 4
-
-    cv2.rectangle(frame, (left, top), (right, bottom), (0, 0, 255), 2)
-    cv2.rectangle(frame, (left, bottom - 35), (right, bottom), (0, 0, 255), cv2.FILLED)
-    cv2.putText(frame, name, (left + 6, bottom - 6), cv2.FONT_HERSHEY_DUPLEX, 0.8, (255, 255, 255), 1)
+def draw_faces(frame, locations, names):
+    for (top, right, bottom, left), name in zip(locations, names, strict=True):
+        top *= INV_SCALE
+        right *= INV_SCALE
+        bottom *= INV_SCALE
+        left *= INV_SCALE
+        ...
 ```
 
-- Vì toạ độ được tính trên khung hình đã resize 25%, cần **nhân lại 4** (= 1/0.25) để quy đổi về toạ độ trên khung hình gốc.
-- Vẽ khung chữ nhật đỏ quanh khuôn mặt, vẽ thêm nhãn tên phía dưới khung.
+- Toạ độ được tính trên khung hình đã thu nhỏ, nên **nhân lại `INV_SCALE`** (= 4, suy ra từ `DETECT_SCALE` chứ không viết cứng) để quy đổi về khung hình gốc.
+- Vẽ khung chữ nhật đỏ quanh khuôn mặt và nhãn tên phía dưới khung.
+- `zip(..., strict=True)`: `locations` và `names` luôn cùng độ dài; nếu lệch thì báo lỗi thay vì cắt bớt im lặng.
+
+### `run_recognition(self)`
+
+Vòng lặp điều phối, chạy webcam và nhận diện theo thời gian thực:
+
+```python
+video_stream = VideoStream(0)
+
+while True:
+    ret, frame = video_stream.read()
+    if not ret or frame is None:
+        if cv2.waitKey(1) % 256 == 27:   # vẫn cho phép ESC khi chưa có khung hình
+            break
+        continue
+
+    if self.frame_count % self.PROCESS_EVERY_N == 0:
+        self.recognize(frame)
+    self.frame_count += 1
+
+    draw_faces(frame, self.face_locations, self.face_names)
+    ...
+```
+
+- `VideoStream` đọc camera trên thread nền (xem [phần trên](#lớp-videostream-đọc-webcam-bất-đồng-bộ)); `video_stream.read()` luôn trả về khung hình mới nhất. Nếu chưa có khung hình hợp lệ (có thể xảy ra ngay lúc mới khởi động camera), bỏ qua vòng lặp này thay vì crash, nhưng vẫn kiểm tra `ESC` để không bị "kẹt" không thoát được.
+- **Tối ưu hiệu năng**: chỉ chạy nhận diện (bước tốn CPU nhất) khi `frame_count % PROCESS_EVERY_N == 0`, tức **1 trong mỗi 3 khung hình** theo mặc định. Khung còn lại chỉ vẽ lại kết quả gần nhất. Chỉ cần đổi `PROCESS_EVERY_N` để cân bằng giữa độ mượt và tải CPU tuỳ cấu hình máy.
 
 ```python
 now = time.time()
@@ -272,37 +287,32 @@ prev_time = now
 cv2.putText(frame, f'FPS: {fps:.1f}', (10, 25), cv2.FONT_HERSHEY_DUPLEX, 0.7, (0, 255, 0), 1)
 ```
 
-Tính FPS (khung hình/giây) dựa trên thời gian trôi qua giữa 2 vòng lặp liên tiếp, rồi vẽ số liệu lên góc trái phía trên màn hình. Đây là công cụ chẩn đoán trực quan: người dùng có thể tự quan sát tốc độ hiển thị thực tế, hữu ích khi tinh chỉnh `PROCESS_EVERY_N` hoặc độ phân giải camera cho phù hợp với cấu hình máy.
+Tính FPS (khung hình/giây) dựa trên thời gian trôi qua giữa 2 vòng lặp liên tiếp, rồi vẽ số liệu lên góc trái phía trên màn hình. Đây là công cụ chẩn đoán trực quan, hữu ích khi tinh chỉnh `PROCESS_EVERY_N` hoặc độ phân giải camera.
 
 ```python
 cv2.imshow('Face Recognition', frame)
 if cv2.waitKey(1) % 256 == 27:  # ESC pressed
     break
-```
 
-Hiển thị khung hình kết quả; nhấn `ESC` (mã 27) để thoát vòng lặp.
-
-```python
 video_stream.stop()
 cv2.destroyAllWindows()
 ```
 
-Dừng thread nền và giải phóng webcam (qua `VideoStream.stop()`), rồi đóng toàn bộ cửa sổ OpenCV khi kết thúc.
+Hiển thị khung hình kết quả; nhấn `ESC` (mã 27) để thoát, sau đó dừng thread nền, giải phóng webcam và đóng các cửa sổ OpenCV.
 
 ## Tóm tắt luồng xử lý
 
 ```
 Khởi tạo FaceRecognition()
-   → encode_faces(): nạp & mã hoá toàn bộ ảnh trong detect/
+   → encode_faces() → load_known_faces(): nạp encoding từ cache, chỉ mã hoá ảnh mới/đã đổi
         ↓
 run_recognition()
    → mở VideoStream (thread nền liên tục đọc khung hình mới nhất từ webcam)
    → vòng lặp (thread chính):
         → lấy khung hình mới nhất từ VideoStream
-        → (mỗi PROCESS_EVERY_N khung) resize 25% + phát hiện + mã hoá khuôn mặt
-             → so khớp với known_face_encodings → chọn khuôn mặt gần nhất
-             → nếu match: gán tên + % confidence, ngược lại: "Unknown"
-        → vẽ khung + tên + FPS lên khung hình gốc → hiển thị
+        → (mỗi PROCESS_EVERY_N khung) recognize(): resize 25% + phát hiện + mã hoá khuôn mặt
+             → match_face(): chọn khuôn mặt gần nhất; ≤ ngưỡng thì gán tên + % confidence, ngược lại "Unknown"
+        → draw_faces() + FPS lên khung hình gốc → hiển thị
    → ESC để thoát → dừng VideoStream, đóng cửa sổ
 ```
 

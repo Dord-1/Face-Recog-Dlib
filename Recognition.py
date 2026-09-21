@@ -1,27 +1,130 @@
-import cv2
-import face_recognition
-import os, sys
-import numpy as np
 import math
+import os
+import pickle
 import threading
 import time
-import pickle
 
-DETECT_DIR = 'detect'
-IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png')
-CACHE_PATH = os.path.join(DETECT_DIR, '.encodings.pkl')
-CACHE_VERSION = 1  # tăng số này khi đổi cách mã hoá để bỏ cache cũ
+import cv2
+import face_recognition
+import numpy as np
+
+from config import (
+    CACHE_PATH,
+    CACHE_VERSION,
+    DETECT_DIR,
+    DETECT_SCALE,
+    IMAGE_EXTENSIONS,
+    INV_SCALE,
+    MATCH_THRESHOLD,
+    PROCESS_EVERY_N,
+)
 
 
-def face_confidence(face_distance, face_match_threshold=0.6):
-    range = (1.0 - face_match_threshold)
-    linear_val = (1.0 - face_distance) / (range * 2.0)
+class CameraError(RuntimeError):
+    """Không mở được webcam."""
+
+
+def face_confidence(face_distance, face_match_threshold=MATCH_THRESHOLD):
+    span = (1.0 - face_match_threshold)
+    linear_val = (1.0 - face_distance) / (span * 2.0)
 
     if face_distance > face_match_threshold:
         return str(round(linear_val * 100, 2)) + "%"
     else:
         val = (linear_val + ((1.0 - linear_val) * math.pow((linear_val - 0.5) * 2, 0.2))) * 100
         return str(round(val, 2)) + "%"
+
+
+def match_face(encoding, known_encodings, known_names, threshold=MATCH_THRESHOLD):
+    """So khớp 1 khuôn mặt với danh sách đã biết. Trả về (tên, độ tin cậy); 'Unknown' nếu không khớp."""
+    if len(known_encodings) == 0:
+        return 'Unknown', 'Unknown'
+
+    distances = face_recognition.face_distance(known_encodings, encoding)
+    best = int(np.argmin(distances))
+    if distances[best] <= threshold:
+        return known_names[best], face_confidence(distances[best], threshold)
+    return 'Unknown', 'Unknown'
+
+
+def encode_image(path):
+    """Encoding của khuôn mặt đầu tiên trong ảnh, hoặc None nếu ảnh không có mặt/không đọc được."""
+    try:
+        found = face_recognition.face_encodings(face_recognition.load_image_file(path))
+    except (OSError, ValueError):
+        return None
+    return found[0] if found else None
+
+
+def load_cache(cache_path=CACHE_PATH):
+    try:
+        with open(cache_path, 'rb') as f:
+            data = pickle.load(f)
+        if data.get('version') == CACHE_VERSION:
+            return data['entries']
+    except (OSError, EOFError, pickle.UnpicklingError, KeyError, AttributeError, ValueError):
+        pass  # không có cache, hỏng hoặc khác phiên bản -> mã hoá lại từ đầu
+    return {}
+
+
+def save_cache(entries, cache_path=CACHE_PATH):
+    tmp_path = cache_path + '.tmp'
+    try:
+        with open(tmp_path, 'wb') as f:
+            pickle.dump({'version': CACHE_VERSION, 'entries': entries}, f)
+        os.replace(tmp_path, cache_path)
+    except OSError as e:
+        print(f'Không lưu được cache encoding: {e}')
+
+
+def load_known_faces(detect_dir=DETECT_DIR, cache_path=CACHE_PATH, encoder=encode_image):
+    """Nạp encoding của ảnh trong detect_dir, dùng cache theo mtime để khỏi mã hoá lại.
+
+    Ảnh không đọc được hoặc không có khuôn mặt bị bỏ qua (thay vì làm crash).
+    Trả về (encodings, names, skipped, reused).
+    """
+    os.makedirs(detect_dir, exist_ok=True)
+    cache = load_cache(cache_path)
+    entries, encodings, names, skipped = {}, [], [], []
+    reused = 0
+
+    for image in sorted(os.listdir(detect_dir)):
+        if not image.lower().endswith(IMAGE_EXTENSIONS):
+            continue
+
+        path = os.path.join(detect_dir, image)
+        mtime = os.path.getmtime(path)
+        cached = cache.get(image)
+
+        if cached and cached['mtime'] == mtime:
+            encoding = cached['encoding']
+            reused += 1
+        else:
+            encoding = encoder(path)
+
+        entries[image] = {'mtime': mtime, 'encoding': encoding}  # None = ảnh lỗi, cũng được cache
+
+        if encoding is None:
+            skipped.append(image)
+            continue
+        encodings.append(encoding)
+        names.append(image)
+
+    save_cache(entries, cache_path)
+    return encodings, names, skipped, reused
+
+
+def draw_faces(frame, locations, names):
+    """Vẽ khung + nhãn lên frame. `locations` tính trên khung thu nhỏ nên nhân lại INV_SCALE."""
+    for (top, right, bottom, left), name in zip(locations, names, strict=True):
+        top *= INV_SCALE
+        right *= INV_SCALE
+        bottom *= INV_SCALE
+        left *= INV_SCALE
+
+        cv2.rectangle(frame, (left, top), (right, bottom), (0, 0, 255), 2)
+        cv2.rectangle(frame, (left, bottom - 35), (right, bottom), (0, 0, 255), cv2.FILLED)
+        cv2.putText(frame, name, (left + 6, bottom - 6), cv2.FONT_HERSHEY_DUPLEX, 0.8, (255, 255, 255), 1)
 
 
 class VideoStream:
@@ -39,7 +142,8 @@ class VideoStream:
         self.stream.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
 
         if not self.stream.isOpened():
-            sys.exit('Camera not found')
+            self.stream.release()
+            raise CameraError('Không tìm thấy hoặc không mở được webcam')
 
         self.lock = threading.Lock()
         self.ret, self.frame = self.stream.read()
@@ -65,8 +169,7 @@ class VideoStream:
 
 class FaceRecognition:
     # Số khung hình bỏ qua giữa 2 lần xử lý nhận diện (chỉ xử lý 1/PROCESS_EVERY_N khung).
-    # Tăng giá trị này nếu máy yếu để đổi lấy tốc độ hiển thị mượt hơn.
-    PROCESS_EVERY_N = 3
+    PROCESS_EVERY_N = PROCESS_EVERY_N
 
     def __init__(self):
         self.face_locations = []
@@ -77,67 +180,28 @@ class FaceRecognition:
         self.frame_count = 0
         self.encode_faces()
 
-    def _load_cache(self):
-        try:
-            with open(CACHE_PATH, 'rb') as f:
-                data = pickle.load(f)
-            if data.get('version') == CACHE_VERSION:
-                return data['entries']
-        except Exception:
-            pass  # không có cache, hỏng hoặc khác phiên bản -> mã hoá lại từ đầu
-        return {}
-
-    def _save_cache(self, entries):
-        tmp_path = CACHE_PATH + '.tmp'
-        try:
-            with open(tmp_path, 'wb') as f:
-                pickle.dump({'version': CACHE_VERSION, 'entries': entries}, f)
-            os.replace(tmp_path, CACHE_PATH)
-        except OSError as e:
-            print(f'Không lưu được cache encoding: {e}')
-
     def encode_faces(self):
-        """Nạp encoding của ảnh trong detect/, dùng cache theo mtime để khỏi mã hoá lại.
+        encodings, names, skipped, reused = load_known_faces()
+        self.known_face_encodings = encodings
+        self.known_face_names = names
 
-        Ảnh không đọc được hoặc không có khuôn mặt bị bỏ qua (thay vì làm crash).
-        """
-        os.makedirs(DETECT_DIR, exist_ok=True)
-        cache = self._load_cache()
-        entries = {}
-        skipped = []
-        reused = 0
-
-        for image in sorted(os.listdir(DETECT_DIR)):
-            if not image.lower().endswith(IMAGE_EXTENSIONS):
-                continue
-
-            path = os.path.join(DETECT_DIR, image)
-            mtime = os.path.getmtime(path)
-            cached = cache.get(image)
-
-            if cached and cached['mtime'] == mtime:
-                encoding = cached['encoding']
-                reused += 1
-            else:
-                try:
-                    found = face_recognition.face_encodings(face_recognition.load_image_file(path))
-                    encoding = found[0] if found else None
-                except Exception:
-                    encoding = None
-
-            entries[image] = {'mtime': mtime, 'encoding': encoding}  # None = ảnh lỗi, cũng được cache
-
-            if encoding is None:
-                skipped.append(image)
-                continue
-            self.known_face_encodings.append(encoding)
-            self.known_face_names.append(image)
-
-        self._save_cache(entries)
-        print(f'Đã nạp {len(self.known_face_names)} ảnh '
-              f'({reused} từ cache, {len(entries) - reused} mã hoá mới)')
+        print(f'Đã nạp {len(names)} ảnh '
+              f'({reused} từ cache, {len(names) + len(skipped) - reused} mã hoá mới)')
         if skipped:
             print(f'Bỏ qua {len(skipped)} ảnh không có khuôn mặt hoặc không đọc được: {skipped}')
+
+    def recognize(self, frame):
+        """Dò và nhận diện khuôn mặt trong frame, cập nhật face_locations/face_names."""
+        small_frame = cv2.resize(frame, (0, 0), fx=DETECT_SCALE, fy=DETECT_SCALE)
+        rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
+
+        self.face_locations = face_recognition.face_locations(rgb_small_frame, number_of_times_to_upsample=0)
+        self.face_encodings = face_recognition.face_encodings(rgb_small_frame, self.face_locations)
+
+        self.face_names = []
+        for face_encoding in self.face_encodings:
+            name, confidence = match_face(face_encoding, self.known_face_encodings, self.known_face_names)
+            self.face_names.append(f'{name} {confidence}')
 
     def run_recognition(self):
         video_stream = VideoStream(0)
@@ -148,45 +212,15 @@ class FaceRecognition:
         while True:
             ret, frame = video_stream.read()
             if not ret or frame is None:
+                if cv2.waitKey(1) % 256 == 27:  # vẫn cho phép ESC khi chưa có khung hình
+                    break
                 continue
 
             if self.frame_count % self.PROCESS_EVERY_N == 0:
-                small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
-                rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
-
-                self.face_locations = face_recognition.face_locations(rgb_small_frame, number_of_times_to_upsample=0)
-                self.face_encodings = face_recognition.face_encodings(rgb_small_frame, self.face_locations)
-
-                self.face_names = []
-
-                for face_encoding in self.face_encodings:
-                    if not self.known_face_encodings:
-                        self.face_names.append('Unknown Unknown')
-                        continue
-
-                    matches = face_recognition.compare_faces(self.known_face_encodings, face_encoding) #RetinaFace.verify
-                    name = 'Unknown'
-                    confidence = 'Unknown'
-
-                    face_distances = face_recognition.face_distance(self.known_face_encodings, face_encoding)
-                    best_match_index = np.argmin(face_distances)
-
-                    if matches[best_match_index]:
-                        name = self.known_face_names[best_match_index]
-                        confidence = face_confidence(face_distances[best_match_index])
-                    self.face_names.append(f'{name} {confidence}')
-
+                self.recognize(frame)
             self.frame_count += 1
 
-            for (top, right, bottom, left), name in zip(self.face_locations, self.face_names):
-                top *= 4
-                right *= 4
-                bottom *= 4
-                left *= 4
-
-                cv2.rectangle(frame, (left, top), (right, bottom), (0, 0, 255), 2)
-                cv2.rectangle(frame, (left, bottom - 35), (right, bottom), (0, 0, 255), cv2.FILLED)
-                cv2.putText(frame, name, (left + 6, bottom - 6), cv2.FONT_HERSHEY_DUPLEX, 0.8, (255, 255, 255), 1)
+            draw_faces(frame, self.face_locations, self.face_names)
 
             now = time.time()
             fps = 1.0 / (now - prev_time) if now > prev_time else fps
@@ -194,7 +228,7 @@ class FaceRecognition:
             cv2.putText(frame, f'FPS: {fps:.1f}', (10, 25), cv2.FONT_HERSHEY_DUPLEX, 0.7, (0, 255, 0), 1)
 
             cv2.imshow('Face Recognition', frame)
-            if cv2.waitKey(1) % 256 == 27: #ESC pressed
+            if cv2.waitKey(1) % 256 == 27:  # ESC pressed
                 break
 
         video_stream.stop()
