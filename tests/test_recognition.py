@@ -1,7 +1,8 @@
 import numpy as np
 import pytest
 
-from Recognition import face_confidence, match_face
+import Recognition
+from Recognition import face_confidence, match_face, scale_locations
 
 
 def vec(value):
@@ -69,3 +70,39 @@ class TestMatchFace:
     def test_custom_threshold(self):
         known = [unit_at_distance(0.4)]
         assert match_face(vec(0), known, ['a.jpg'], threshold=0.3) == ('Unknown', 'Unknown')
+
+
+class TestScaleLocations:
+    def test_scales_all_coordinates(self):
+        assert scale_locations([(10, 50, 40, 20)], 2, (480, 640, 3)) == [(20, 100, 80, 40)]
+
+    def test_clamps_to_frame_bounds(self):
+        # bên phải/dưới vượt biên khung, bên trái/trên âm -> kẹp về [0, kích thước]
+        assert scale_locations([(-5, 400, 300, -3)], 2, (480, 640, 3)) == [(0, 640, 480, 0)]
+
+    def test_empty(self):
+        assert scale_locations([], 2, (480, 640, 3)) == []
+
+    def test_multiple_faces_keep_order(self):
+        out = scale_locations([(1, 2, 3, 4), (5, 6, 7, 8)], 3, (100, 100, 3))
+        assert out == [(3, 6, 9, 12), (15, 18, 21, 24)]
+
+
+def test_recognize_detects_on_small_frame_but_encodes_on_full_frame(monkeypatch):
+    calls = {}
+    monkeypatch.setattr(Recognition.face_recognition, 'face_locations',
+                        lambda img, **kw: calls.update(detect_shape=img.shape) or [(10, 50, 40, 20)])
+    monkeypatch.setattr(Recognition.face_recognition, 'face_encodings',
+                        lambda img, locs: calls.update(encode_shape=img.shape, encode_locs=locs) or [vec(0)])
+
+    fr = Recognition.FaceRecognition.__new__(Recognition.FaceRecognition)  # bỏ qua nạp ảnh từ detect/
+    fr.known_face_encodings, fr.known_face_names = [], []
+    frame = np.zeros((480, 640, 3), dtype=np.uint8)
+    fr.recognize(frame)
+
+    assert calls['encode_shape'][:2] == (480, 640)                       # mã hoá trên khung gốc
+    assert calls['detect_shape'][0] < 480 and calls['detect_shape'][1] < 640  # dò trên khung nhỏ
+    inv = Recognition.INV_SCALE
+    assert calls['encode_locs'] == [(10 * inv, 50 * inv, 40 * inv, 20 * inv)]
+    assert fr.face_locations == [(10, 50, 40, 20)]   # toạ độ khung nhỏ giữ nguyên cho draw_faces
+    assert fr.face_names == ['Unknown Unknown']

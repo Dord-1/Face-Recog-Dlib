@@ -114,6 +114,20 @@ def load_known_faces(detect_dir=DETECT_DIR, cache_path=CACHE_PATH, encoder=encod
     return encodings, names, skipped, reused
 
 
+def scale_locations(locations, factor, shape):
+    """Nhân toạ độ (top, right, bottom, left) lên `factor` và kẹp trong khung hình có `shape` (h, w, ...)."""
+    height, width = shape[:2]
+    return [
+        (
+            min(max(int(round(top * factor)), 0), height),
+            min(max(int(round(right * factor)), 0), width),
+            min(max(int(round(bottom * factor)), 0), height),
+            min(max(int(round(left * factor)), 0), width),
+        )
+        for top, right, bottom, left in locations
+    ]
+
+
 def draw_faces(frame, locations, names):
     """Vẽ khung + nhãn lên frame. `locations` tính trên khung thu nhỏ nên nhân lại INV_SCALE."""
     for (top, right, bottom, left), name in zip(locations, names, strict=True):
@@ -191,12 +205,18 @@ class FaceRecognition:
             print(f'Bỏ qua {len(skipped)} ảnh không có khuôn mặt hoặc không đọc được: {skipped}')
 
     def recognize(self, frame):
-        """Dò và nhận diện khuôn mặt trong frame, cập nhật face_locations/face_names."""
+        """Dò và nhận diện khuôn mặt trong frame, cập nhật face_locations/face_names.
+
+        Dò trên khung thu nhỏ (nhanh) nhưng mã hoá trên khung gốc: mặt nhỏ mã hoá từ khung thu nhỏ
+        cho vector kém chính xác hơn (khoảng cách tới chính người đó cao hơn hẳn).
+        """
         small_frame = cv2.resize(frame, (0, 0), fx=DETECT_SCALE, fy=DETECT_SCALE)
         rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
         self.face_locations = face_recognition.face_locations(rgb_small_frame, number_of_times_to_upsample=0)
-        self.face_encodings = face_recognition.face_encodings(rgb_small_frame, self.face_locations)
+        full_locations = scale_locations(self.face_locations, INV_SCALE, frame.shape)
+        self.face_encodings = face_recognition.face_encodings(rgb_frame, full_locations)
 
         self.face_names = []
         for face_encoding in self.face_encodings:

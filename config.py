@@ -10,8 +10,10 @@ CACHE_VERSION = 1  # tăng số này khi đổi cách mã hoá để bỏ cache 
 # Ngưỡng khoảng cách khuôn mặt coi là "cùng một người" (mặc định của face_recognition)
 MATCH_THRESHOLD = 0.6
 
-# Nhận diện/dò khuôn mặt trên khung hình thu nhỏ cho nhanh; toạ độ nhân lại INV_SCALE để vẽ
-DETECT_SCALE = 0.25
+# Dò khuôn mặt trên khung hình thu nhỏ cho nhanh; toạ độ nhân lại INV_SCALE để vẽ/mã hoá.
+# Đo thực tế (khung webcam 640 rộng, upsample=0): 0.25 chỉ thấy mặt rộng >= ~250 px (phải ngồi rất sát),
+# 0.5 thấy từ ~120 px với chi phí ~4 ms thay vì ~1 ms.
+DETECT_SCALE = 0.5
 INV_SCALE = round(1 / DETECT_SCALE)
 
 # Chỉ chạy nhận diện trên 1 trong mỗi N khung hình. Tăng nếu máy yếu.

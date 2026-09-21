@@ -131,5 +131,5 @@ Giải phóng webcam và đóng cửa sổ hiển thị.
 | Thuật toán | Haar Cascade (OpenCV, cổ điển) | Deep learning embedding (`dlib`/`face_recognition`) |
 | Biết tên người? | Không | Có (so khớp với dữ liệu đã lưu trong `detect/`) |
 | Độ chính xác | Thấp hơn, dễ nhầm góc nghiêng/ánh sáng | Cao hơn đáng kể |
-| Tốc độ | Nhanh, nhẹ | Chậm hơn (đã được tối ưu bằng resize 25% + xử lý cách khung) |
+| Tốc độ | Nhanh, nhẹ | Chậm hơn (đã được tối ưu bằng dò trên khung thu nhỏ + xử lý cách khung) |
 | Phím thoát | `q` | `ESC` |

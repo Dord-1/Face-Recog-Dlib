@@ -21,7 +21,7 @@ from config import (CACHE_PATH, CACHE_VERSION, DETECT_DIR, DETECT_SCALE, IMAGE_E
 - `threading`: chạy việc đọc webcam trên 1 thread riêng (xem [`VideoStream`](#lớp-videostream-đọc-webcam-bất-đồng-bộ)) để tránh giật/lag.
 - `time`: đo thời gian giữa các khung hình để tính FPS hiển thị trên màn hình.
 - `pickle`: lưu/đọc cache encoding khuôn mặt (xem [cache encoding](#load_known_faces-và-cache-encoding)).
-- **`config.py`**: mọi hằng số dùng chung (thư mục `detect/`, ngưỡng `MATCH_THRESHOLD = 0.6`, tỉ lệ thu nhỏ `DETECT_SCALE = 0.25`, `PROCESS_EVERY_N`, ...) nằm ở một nơi, dùng chung với `Main.py`, `capture.py` và `Check_Detect.py` để giá trị không bị lệch giữa các file.
+- **`config.py`**: mọi hằng số dùng chung (thư mục `detect/`, ngưỡng `MATCH_THRESHOLD = 0.6`, tỉ lệ thu nhỏ `DETECT_SCALE = 0.5`, `PROCESS_EVERY_N`, ...) nằm ở một nơi, dùng chung với `Main.py`, `capture.py` và `Check_Detect.py` để giá trị không bị lệch giữa các file.
 
 ## Hàm `face_confidence()`
 
@@ -220,14 +220,16 @@ Cách này tương đương `compare_faces` (vốn chỉ so `distance <= 0.6`) n
 
 ### `recognize(self, frame)`
 
-Dò và nhận diện khuôn mặt trong một khung hình, cập nhật `face_locations` và `face_names`:
+Dò và nhận diện khuôn mặt trong một khung hình, cập nhật `face_locations` và `face_names`. **Dò trên khung thu nhỏ, mã hoá trên khung gốc**:
 
 ```python
 small_frame = cv2.resize(frame, (0, 0), fx=DETECT_SCALE, fy=DETECT_SCALE)
 rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
+rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
 self.face_locations = face_recognition.face_locations(rgb_small_frame, number_of_times_to_upsample=0)
-self.face_encodings = face_recognition.face_encodings(rgb_small_frame, self.face_locations)
+full_locations = scale_locations(self.face_locations, INV_SCALE, frame.shape)
+self.face_encodings = face_recognition.face_encodings(rgb_frame, full_locations)
 
 self.face_names = []
 for face_encoding in self.face_encodings:
@@ -235,9 +237,24 @@ for face_encoding in self.face_encodings:
     self.face_names.append(f'{name} {confidence}')
 ```
 
-- Ảnh được resize xuống còn **25%** (`DETECT_SCALE`) trước khi nhận diện, giúp giảm đáng kể thời gian xử lý.
+- **Dò trên khung thu nhỏ** (`DETECT_SCALE = 0.5`) vì dò là bước tốn theo số điểm ảnh. `face_locations` giữ toạ độ của khung nhỏ để `draw_faces` dùng.
+- **Mã hoá trên khung gốc**: `scale_locations()` nhân toạ độ lên `INV_SCALE` và kẹp trong biên khung, rồi `face_encodings` mã hoá đúng vùng mặt trên ảnh độ phân giải đầy đủ. Mã hoá từ khung thu nhỏ làm mặt nhỏ bị mờ và vector lệch xa vector đã lưu.
 - OpenCV đọc ảnh theo thứ tự màu **BGR**, trong khi `face_recognition` cần **RGB**, nên phải chuyển đổi bằng `cv2.cvtColor(..., cv2.COLOR_BGR2RGB)`.
-- `number_of_times_to_upsample=0` (mặc định của thư viện là `1`): bỏ bước phóng to ảnh lên để tìm khuôn mặt nhỏ/xa camera, đổi lấy tốc độ nhanh hơn. Đánh đổi hợp lý cho use-case chính là người dùng đứng gần webcam.
+- `number_of_times_to_upsample=0` (mặc định của thư viện là `1`): bỏ bước phóng to ảnh để tìm mặt nhỏ, đổi lấy tốc độ.
+
+#### Vì sao `DETECT_SCALE = 0.5` chứ không phải `0.25`?
+
+Đo trên ảnh thật, giả lập khung webcam 640 rộng (upsample = 0):
+
+| Mặt rộng trong khung 640 | `DETECT_SCALE = 0.25` | `DETECT_SCALE = 0.5` |
+|---|---|---|
+| ≤ 200 px (≤ 31% khung) | không dò ra | dò ra từ ~120 px |
+| ≥ 250 px (≥ 39% khung) | dò ra | dò ra |
+| Thời gian dò | ~1 ms | ~4 ms |
+
+Với `0.25`, phải ngồi rất sát camera mới được nhận diện (`MIN_FACE_WIDTH` khi chụp ảnh cũng vô nghĩa vì mặt < ~250 px không được dò ra). Với `0.5`, tổng thời gian `recognize()` ~8 ms cho mỗi lần chạy (mỗi `PROCESS_EVERY_N` khung).
+
+Với mặt nhỏ (~120 px), mã hoá trên khung gốc đưa khoảng cách tới chính người đó xuống rõ rệt (ví dụ 0.084 → 0.024 và 0.138 → 0.072 trong hai ảnh thử) mà khoảng cách tới người khác không đổi (~0.75). Mặt ≥ 250 px thì hai cách gần như như nhau. Lưu ý phép đo này dùng cùng một ảnh gốc cho đăng ký và thử nên là ước lượng lạc quan; đo đầy đủ bằng ảnh khác nhau dùng `evaluate.py` (hạng mục 5).
 
 ### `draw_faces()` — vẽ kết quả
 
@@ -251,7 +268,7 @@ def draw_faces(frame, locations, names):
         ...
 ```
 
-- Toạ độ được tính trên khung hình đã thu nhỏ, nên **nhân lại `INV_SCALE`** (= 4, suy ra từ `DETECT_SCALE` chứ không viết cứng) để quy đổi về khung hình gốc.
+- Toạ độ được tính trên khung hình đã thu nhỏ, nên **nhân lại `INV_SCALE`** (= 2, suy ra từ `DETECT_SCALE` chứ không viết cứng) để quy đổi về khung hình gốc.
 - Vẽ khung chữ nhật đỏ quanh khuôn mặt và nhãn tên phía dưới khung.
 - `zip(..., strict=True)`: `locations` và `names` luôn cùng độ dài; nếu lệch thì báo lỗi thay vì cắt bớt im lặng.
 
@@ -310,7 +327,7 @@ run_recognition()
    → mở VideoStream (thread nền liên tục đọc khung hình mới nhất từ webcam)
    → vòng lặp (thread chính):
         → lấy khung hình mới nhất từ VideoStream
-        → (mỗi PROCESS_EVERY_N khung) recognize(): resize 25% + phát hiện + mã hoá khuôn mặt
+        → (mỗi PROCESS_EVERY_N khung) recognize(): dò trên khung thu nhỏ, mã hoá trên khung gốc
              → match_face(): chọn khuôn mặt gần nhất; ≤ ngưỡng thì gán tên + % confidence, ngược lại "Unknown"
         → draw_faces() + FPS lên khung hình gốc → hiển thị
    → ESC để thoát → dừng VideoStream, đóng cửa sổ
