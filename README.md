@@ -18,6 +18,8 @@
 | [config.py](config.py) | Hằng số dùng chung (thư mục `detect/`, ngưỡng nhận diện, tỉ lệ thu nhỏ, ...). |
 | [Check_Detect.py](Check_Detect.py) | Script kiểm tra và dọn ảnh trùng / ảnh lỗi trong `detect/`. |
 | [Simple Face Detection.py](Simple%20Face%20Detection.py) | Script độc lập, minh hoạ phát hiện khuôn mặt (không nhận diện danh tính) bằng Haar Cascade của OpenCV. |
+| [evaluate.py](evaluate.py) | Đo độ chính xác nhận diện bằng ảnh có nhãn trong `eval/` và gợi ý ngưỡng (xem [docs/Evaluate.md](docs/Evaluate.md)). |
+| [smoothing.py](smoothing.py) | `NameSmoother`: bỏ phiếu qua nhiều lần nhận diện để nhãn không nhấp nháy. |
 | [tests/](tests/) | Bộ test pytest (không cần webcam). |
 
 ## Yêu cầu cài đặt
@@ -94,6 +96,16 @@ python Check_Detect.py --delete   # xoá sau khi xác nhận từng nhóm
 ```
 
 Script gom các ảnh gần như giống hệt nhau, đề xuất giữ ảnh có khuôn mặt lớn nhất và chỉ xoá những ảnh bạn xác nhận. Chi tiết: [docs/Check_Detect.md](docs/Check_Detect.md).
+
+### Đo độ chính xác nhận diện (tuỳ chọn)
+
+Đặt ảnh test vào `eval/<tên>/*.jpg` (ảnh người lạ vào `eval/unknown/`) rồi chạy:
+
+```bash
+python evaluate.py --mode both
+```
+
+Công cụ báo tỉ lệ nhận đúng / nhận nhầm / bỏ sót theo từng ngưỡng và gợi ý `RECOGNITION_THRESHOLD`. Cách chuẩn bị dữ liệu và đọc kết quả: [docs/Evaluate.md](docs/Evaluate.md).
 
 ## Phát triển
 
