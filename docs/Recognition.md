@@ -197,6 +197,18 @@ else:
 
 Khi khởi động, chương trình in tóm tắt, ví dụ `Đã nạp 12 ảnh (11 từ cache, 1 mã hoá mới)`.
 
+### `person_name()` — gộp nhiều ảnh thành một người
+
+```python
+def person_name(filename):
+    stem = os.path.splitext(os.path.basename(filename))[0]
+    return re.sub(r'_\d+$', '', stem) or stem
+```
+
+`Huy_0.jpg`, `Huy_1.jpg` → cùng người `Huy` (bỏ đuôi file và hậu tố `_số` cuối; `Nguyen_Van_A_3.jpg` → `Nguyen_Van_A`). `encode_faces()` áp dụng khi nạp, nên `known_face_names` chứa tên người (lặp lại theo số ảnh) và nhãn hiển thị là `Huy 98%` thay vì `Huy_0.jpg 98%`. Cache vẫn khoá theo tên file, không đổi.
+
+Vì `match_face` chọn **ảnh gần nhất** rồi trả tên người của ảnh đó, thêm nhiều ảnh khác góc/ánh sáng cho một người làm tăng khả năng nhận ra họ (chỉ cần một ảnh đủ giống). Ảnh trùng hệt thì không giúp gì thêm — xem [Check_Detect.md](Check_Detect.md).
+
 ### `match_face()` — so khớp một khuôn mặt
 
 ```python

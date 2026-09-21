@@ -1,6 +1,7 @@
 import math
 import os
 import pickle
+import re
 import threading
 import time
 
@@ -33,6 +34,12 @@ def face_confidence(face_distance, face_match_threshold=MATCH_THRESHOLD):
     else:
         val = (linear_val + ((1.0 - linear_val) * math.pow((linear_val - 0.5) * 2, 0.2))) * 100
         return str(round(val, 2)) + "%"
+
+
+def person_name(filename):
+    """Tên người từ tên file ảnh: 'Huy_0.jpg' -> 'Huy' (bỏ đuôi và hậu tố _số cuối)."""
+    stem = os.path.splitext(os.path.basename(filename))[0]
+    return re.sub(r'_\d+$', '', stem) or stem
 
 
 def match_face(encoding, known_encodings, known_names, threshold=MATCH_THRESHOLD):
@@ -197,9 +204,9 @@ class FaceRecognition:
     def encode_faces(self):
         encodings, names, skipped, reused = load_known_faces()
         self.known_face_encodings = encodings
-        self.known_face_names = names
+        self.known_face_names = [person_name(name) for name in names]  # nhiều ảnh -> cùng một người
 
-        print(f'Đã nạp {len(names)} ảnh '
+        print(f'Đã nạp {len(names)} ảnh của {len(set(self.known_face_names))} người '
               f'({reused} từ cache, {len(names) + len(skipped) - reused} mã hoá mới)')
         if skipped:
             print(f'Bỏ qua {len(skipped)} ảnh không có khuôn mặt hoặc không đọc được: {skipped}')

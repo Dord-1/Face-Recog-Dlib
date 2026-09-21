@@ -3,7 +3,7 @@ import os
 
 import face_recognition
 
-from config import DETECT_DIR, IMAGE_EXTENSIONS, MATCH_THRESHOLD
+from config import DETECT_DIR, DUPLICATE_THRESHOLD, IMAGE_EXTENSIONS
 
 
 def face_area(location):
@@ -89,8 +89,9 @@ def ask_keep(group):
 def main():
     parser = argparse.ArgumentParser(description='Kiểm tra và dọn ảnh trùng trong thư mục detect.')
     parser.add_argument('--dir', default=DETECT_DIR, help=f'thư mục ảnh (mặc định: {DETECT_DIR})')
-    parser.add_argument('--threshold', type=float, default=MATCH_THRESHOLD,
-                        help=f'ngưỡng khoảng cách coi là cùng 1 người (mặc định: {MATCH_THRESHOLD})')
+    parser.add_argument('--threshold', type=float, default=DUPLICATE_THRESHOLD,
+                        help=f'ngưỡng khoảng cách coi là ảnh trùng hệt (mặc định: {DUPLICATE_THRESHOLD}; '
+                             'tăng lên nếu muốn gom cả ảnh khác góc/ánh sáng)')
     parser.add_argument('--delete', action='store_true',
                         help='cho phép xoá ảnh (sau khi xác nhận từng nhóm). Mặc định chỉ báo cáo.')
     args = parser.parse_args()
@@ -116,7 +117,7 @@ def main():
 
     to_delete = []
     for number, group in enumerate(groups, start=1):
-        print(f'\nNhóm {number}: cùng 1 người')
+        print(f'\nNhóm {number}: ảnh gần như giống hệt nhau')
         suggested = max(range(len(group)), key=lambda i: group[i]['area'])
         for i, entry in enumerate(group):
             mark = '  <- đề xuất giữ' if i == suggested else ''

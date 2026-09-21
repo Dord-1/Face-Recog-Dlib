@@ -86,14 +86,14 @@ Script này chỉ khoanh vùng khuôn mặt bằng khung chữ nhật (không nh
 
 ### Dọn dẹp thư mục `detect/` (tuỳ chọn)
 
-Nếu một người có nhiều ảnh trùng, hoặc có ảnh không chứa khuôn mặt (gây lỗi khi nhận diện), dùng script kiểm tra:
+Ảnh của cùng một người được nhận diện theo tên file (`Huy_0.jpg`, `Huy_1.jpg` → `Huy`); nhiều ảnh khác góc/ánh sáng giúp nhận diện tốt hơn. Nếu có ảnh trùng hệt nhau hoặc ảnh không chứa khuôn mặt, dùng script kiểm tra:
 
 ```bash
 python Check_Detect.py            # chỉ báo cáo, không xoá gì
 python Check_Detect.py --delete   # xoá sau khi xác nhận từng nhóm
 ```
 
-Script gom các ảnh của cùng một người, đề xuất giữ ảnh có khuôn mặt lớn nhất và chỉ xoá những ảnh bạn xác nhận. Chi tiết: [docs/Check_Detect.md](docs/Check_Detect.md).
+Script gom các ảnh gần như giống hệt nhau, đề xuất giữ ảnh có khuôn mặt lớn nhất và chỉ xoá những ảnh bạn xác nhận. Chi tiết: [docs/Check_Detect.md](docs/Check_Detect.md).
 
 ## Phát triển
 

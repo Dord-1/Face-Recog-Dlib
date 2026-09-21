@@ -106,3 +106,37 @@ def test_recognize_detects_on_small_frame_but_encodes_on_full_frame(monkeypatch)
     assert calls['encode_locs'] == [(10 * inv, 50 * inv, 40 * inv, 20 * inv)]
     assert fr.face_locations == [(10, 50, 40, 20)]   # toạ độ khung nhỏ giữ nguyên cho draw_faces
     assert fr.face_names == ['Unknown Unknown']
+
+
+class TestPersonName:
+    def test_strips_extension_and_numeric_suffix(self):
+        assert Recognition.person_name('Huy_0.jpg') == 'Huy'
+        assert Recognition.person_name('Huy_12.png') == 'Huy'
+
+    def test_only_last_numeric_suffix_removed(self):
+        assert Recognition.person_name('Nguyen_Van_A_3.jpg') == 'Nguyen_Van_A'
+        assert Recognition.person_name('Room_101_2.jpg') == 'Room_101'
+
+    def test_name_without_suffix_kept(self):
+        assert Recognition.person_name('Elon.png') == 'Elon'
+
+    def test_case_and_path_handled(self):
+        assert Recognition.person_name('detect/An_1.JPG') == 'An'
+
+    def test_purely_numeric_stem_not_emptied(self):
+        assert Recognition.person_name('_5.jpg') == '_5'
+
+
+def test_encode_faces_maps_files_to_people(monkeypatch):
+    enc = [vec(0), vec(1), vec(2)]
+    monkeypatch.setattr(Recognition, 'load_known_faces',
+                        lambda: (enc, ['Elon.png', 'Huy_0.jpg', 'Huy_1.jpg'], [], 3))
+    fr = Recognition.FaceRecognition()
+    assert fr.known_face_names == ['Elon', 'Huy', 'Huy']
+    assert len(fr.known_face_encodings) == 3
+
+
+def test_match_face_returns_person_when_many_images_per_person():
+    known = [unit_at_distance(0.45), unit_at_distance(0.1), unit_at_distance(0.9)]
+    name, _ = match_face(vec(0), known, ['Huy', 'Huy', 'Elon'])
+    assert name == 'Huy'
