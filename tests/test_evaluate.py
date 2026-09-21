@@ -4,8 +4,8 @@ import cv2
 import numpy as np
 import pytest
 
-import evaluate
-from evaluate import (
+from face_recog.tools import evaluate
+from face_recog.tools.evaluate import (
     compute_metrics,
     format_report,
     has_enough_data,

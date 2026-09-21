@@ -1,6 +1,6 @@
 import numpy as np
 
-from Check_Detect import face_area, group_same_person
+from face_recog.tools.check_detect import group_same_person
 
 
 def entry(name, x, area=100):
@@ -12,10 +12,6 @@ def entry(name, x, area=100):
 
 def names(groups):
     return sorted(sorted(e['name'] for e in g) for g in groups)
-
-
-def test_face_area():
-    assert face_area((10, 60, 50, 20)) == (50 - 10) * (60 - 20)
 
 
 def test_groups_close_faces_and_ignores_singletons():
@@ -46,7 +42,7 @@ def test_empty_and_single():
 
 
 def test_scan_folder_reports_unreadable_image_instead_of_crashing(tmp_path):
-    from Check_Detect import scan_folder
+    from face_recog.tools.check_detect import scan_folder
 
     (tmp_path / 'broken.png').write_bytes(b'not an image')
     (tmp_path / 'notes.txt').write_text('ignored')
@@ -55,13 +51,13 @@ def test_scan_folder_reports_unreadable_image_instead_of_crashing(tmp_path):
 
 
 def test_default_threshold_is_stricter_than_recognition_match():
-    from config import DUPLICATE_THRESHOLD, MATCH_THRESHOLD
+    from face_recog.config import DUPLICATE_THRESHOLD, MATCH_THRESHOLD
 
     assert DUPLICATE_THRESHOLD < MATCH_THRESHOLD
 
 
 def test_same_person_different_shots_not_grouped_at_default_threshold():
-    from config import DUPLICATE_THRESHOLD
+    from face_recog.config import DUPLICATE_THRESHOLD
 
     # cùng người nhưng khác góc/ánh sáng (khoảng cách 0.45): không phải ảnh trùng -> giữ cả hai
     entries = [entry('a', 0.0), entry('b', 0.45)]

@@ -2,7 +2,7 @@ import os
 
 import numpy as np
 
-from Recognition import load_cache, load_known_faces
+from face_recog.known_faces import list_image_files, load_cache, load_known_faces, person_name
 
 
 class FakeEncoder:
@@ -110,11 +110,11 @@ def test_corrupt_cache_is_ignored(tmp_path):
 
 
 def test_version_mismatch_discards_cache(tmp_path, monkeypatch):
-    import Recognition
+    from face_recog import known_faces
 
     make_images(tmp_path, 'a.jpg')
     run(tmp_path, FakeEncoder())
-    monkeypatch.setattr(Recognition, 'CACHE_VERSION', Recognition.CACHE_VERSION + 1)
+    monkeypatch.setattr(known_faces, 'CACHE_VERSION', known_faces.CACHE_VERSION + 1)
     enc = FakeEncoder()
     _, _, _, reused = run(tmp_path, enc)
     assert reused == 0 and enc.calls == ['a.jpg']
@@ -125,3 +125,33 @@ def test_missing_folder_is_created(tmp_path):
     encodings, names, skipped, reused = run(folder, FakeEncoder())
     assert folder.is_dir()
     assert (encodings, names, skipped, reused) == ([], [], [], 0)
+
+
+class TestPersonName:
+    def test_strips_extension_and_numeric_suffix(self):
+        assert person_name('Huy_0.jpg') == 'Huy'
+        assert person_name('Huy_12.png') == 'Huy'
+
+    def test_only_last_numeric_suffix_removed(self):
+        assert person_name('Nguyen_Van_A_3.jpg') == 'Nguyen_Van_A'
+        assert person_name('Room_101_2.jpg') == 'Room_101'
+
+    def test_name_without_suffix_kept(self):
+        assert person_name('Elon.png') == 'Elon'
+
+    def test_case_and_path_handled(self):
+        assert person_name('detect/An_1.JPG') == 'An'
+
+    def test_purely_numeric_stem_not_emptied(self):
+        assert person_name('_5.jpg') == '_5'
+
+
+class TestListImageFiles:
+    def test_returns_sorted_image_names_only(self, tmp_path):
+        for name in ('b.jpg', 'a.PNG', 'c.jpeg', 'notes.txt', '.DS_Store', '.encodings.pkl'):
+            (tmp_path / name).write_bytes(b'x')
+        (tmp_path / 'subfolder').mkdir()
+        assert list_image_files(str(tmp_path)) == ['a.PNG', 'b.jpg', 'c.jpeg']
+
+    def test_empty_folder(self, tmp_path):
+        assert list_image_files(str(tmp_path)) == []

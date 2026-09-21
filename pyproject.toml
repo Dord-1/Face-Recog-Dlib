@@ -8,3 +8,6 @@ select = ["E", "F", "W", "I", "B"]
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["face_recog", "tests"]

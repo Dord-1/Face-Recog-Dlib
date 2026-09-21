@@ -1,6 +1,6 @@
 import pytest
 
-from smoothing import PENDING, NameSmoother
+from face_recog.smoothing import PENDING, NameSmoother
 
 FACE = (100, 200, 200, 100)           # (top, right, bottom, left): mặt rộng 100
 FAR_FACE = (100, 700, 200, 600)       # cách xa FACE hơn nhiều bề rộng mặt

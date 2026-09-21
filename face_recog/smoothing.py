@@ -1,7 +1,7 @@
 """Làm mượt nhãn nhận diện qua nhiều lần chạy bằng bỏ phiếu theo từng khuôn mặt (track)."""
 from collections import Counter, deque
 
-from config import TRACK_MAX_DIST_RATIO, TRACK_MAX_MISSES, VOTE_MIN, VOTE_WINDOW
+from face_recog.config import TRACK_MAX_DIST_RATIO, TRACK_MAX_MISSES, VOTE_MIN, VOTE_WINDOW
 
 PENDING = '...'  # chưa đủ phiếu để kết luận
 
