@@ -18,7 +18,9 @@ from config import (
     INV_SCALE,
     MATCH_THRESHOLD,
     PROCESS_EVERY_N,
+    RECOGNITION_THRESHOLD,
 )
+from smoothing import PENDING, NameSmoother
 
 
 class CameraError(RuntimeError):
@@ -42,15 +44,18 @@ def person_name(filename):
     return re.sub(r'_\d+$', '', stem) or stem
 
 
-def match_face(encoding, known_encodings, known_names, threshold=MATCH_THRESHOLD):
-    """So khớp 1 khuôn mặt với danh sách đã biết. Trả về (tên, độ tin cậy); 'Unknown' nếu không khớp."""
+def match_face(encoding, known_encodings, known_names, threshold=RECOGNITION_THRESHOLD):
+    """So khớp 1 khuôn mặt với danh sách đã biết. Trả về (tên, độ tin cậy); 'Unknown' nếu không khớp.
+
+    `threshold` chỉ quyết định khớp hay không; thang % của face_confidence không đổi theo nó.
+    """
     if len(known_encodings) == 0:
         return 'Unknown', 'Unknown'
 
     distances = face_recognition.face_distance(known_encodings, encoding)
     best = int(np.argmin(distances))
     if distances[best] <= threshold:
-        return known_names[best], face_confidence(distances[best], threshold)
+        return known_names[best], face_confidence(distances[best])
     return 'Unknown', 'Unknown'
 
 
@@ -119,6 +124,13 @@ def load_known_faces(detect_dir=DETECT_DIR, cache_path=CACHE_PATH, encoder=encod
 
     save_cache(entries, cache_path)
     return encodings, names, skipped, reused
+
+
+def format_label(name, confidence):
+    """Nhãn hiển thị trên khung hình: 'Huy 98%', 'Unknown', hoặc '...' khi chưa đủ phiếu."""
+    if name == PENDING or name == 'Unknown':
+        return name
+    return f'{name} {confidence}'
 
 
 def scale_locations(locations, factor, shape):
@@ -198,6 +210,7 @@ class FaceRecognition:
         self.face_names = []
         self.known_face_encodings = []
         self.known_face_names = []
+        self.smoother = NameSmoother()
         self.frame_count = 0
         self.encode_faces()
 
@@ -225,10 +238,12 @@ class FaceRecognition:
         full_locations = scale_locations(self.face_locations, INV_SCALE, frame.shape)
         self.face_encodings = face_recognition.face_encodings(rgb_frame, full_locations)
 
-        self.face_names = []
-        for face_encoding in self.face_encodings:
-            name, confidence = match_face(face_encoding, self.known_face_encodings, self.known_face_names)
-            self.face_names.append(f'{name} {confidence}')
+        raw_results = [
+            match_face(face_encoding, self.known_face_encodings, self.known_face_names)
+            for face_encoding in self.face_encodings
+        ]
+        smoothed = self.smoother.update(self.face_locations, raw_results)
+        self.face_names = [format_label(name, confidence) for name, confidence in smoothed]
 
     def run_recognition(self):
         video_stream = VideoStream(0)

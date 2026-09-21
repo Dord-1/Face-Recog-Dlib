@@ -73,7 +73,7 @@ Cửa sổ GUI sẽ hiện ra với hai nút bấm:
 
 2. **Nhận diện khuôn mặt**
    - Encoding khuôn mặt được cache trong `detect/.encodings.pkl` nên các lần mở sau khởi động nhanh; ảnh không có khuôn mặt bị bỏ qua thay vì gây lỗi.
-   - Mở webcam và nhận diện các khuôn mặt đã lưu trong `detect/`, hiển thị tên và độ tin cậy trên khung hình.
+   - Mở webcam và nhận diện các khuôn mặt đã lưu trong `detect/`, hiển thị tên và độ tin cậy trên khung hình. Nhãn hiện `...` vài phần giây đầu rồi mới hiện tên (bỏ phiếu qua nhiều lần nhận diện để không nhấp nháy).
    - Nhấn `ESC` để thoát.
 
 ### Chạy thử phát hiện khuôn mặt đơn giản (tuỳ chọn)

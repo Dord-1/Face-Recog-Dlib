@@ -2,7 +2,8 @@ import numpy as np
 import pytest
 
 import Recognition
-from Recognition import face_confidence, match_face, scale_locations
+from Recognition import face_confidence, format_label, match_face, scale_locations
+from smoothing import PENDING, NameSmoother
 
 
 def vec(value):
@@ -62,10 +63,27 @@ class TestMatchFace:
         known = [unit_at_distance(0.9), unit_at_distance(0.7)]
         assert match_face(vec(0), known, ['a.jpg', 'b.jpg']) == ('Unknown', 'Unknown')
 
-    def test_threshold_is_inclusive(self):
-        known = [unit_at_distance(0.6)]
-        name, _ = match_face(vec(0), known, ['edge.jpg'])
-        assert name == 'edge.jpg'
+    def test_default_threshold_is_recognition_threshold_inclusive(self):
+        from config import RECOGNITION_THRESHOLD
+
+        edge = [unit_at_distance(RECOGNITION_THRESHOLD)]
+        assert match_face(vec(0), edge, ['edge.jpg'])[0] == 'edge.jpg'
+        beyond = [unit_at_distance(RECOGNITION_THRESHOLD + 0.01)]
+        assert match_face(vec(0), beyond, ['edge.jpg']) == ('Unknown', 'Unknown')
+
+    def test_recognition_threshold_stricter_than_library_default(self):
+        from config import MATCH_THRESHOLD, RECOGNITION_THRESHOLD
+
+        assert RECOGNITION_THRESHOLD < MATCH_THRESHOLD
+        # 0.55: trước đây (ngưỡng 0.6) được nhận, giờ là người lạ
+        assert match_face(vec(0), [unit_at_distance(0.55)], ['a.jpg']) == ('Unknown', 'Unknown')
+
+    def test_confidence_scale_does_not_depend_on_threshold(self):
+        known = [unit_at_distance(0.4)]
+        _, conf_default = match_face(vec(0), known, ['a.jpg'])
+        _, conf_loose = match_face(vec(0), known, ['a.jpg'], threshold=0.6)
+        _, conf_strict = match_face(vec(0), known, ['a.jpg'], threshold=0.45)
+        assert conf_default == conf_loose == conf_strict == face_confidence(0.4)
 
     def test_custom_threshold(self):
         known = [unit_at_distance(0.4)]
@@ -97,6 +115,7 @@ def test_recognize_detects_on_small_frame_but_encodes_on_full_frame(monkeypatch)
 
     fr = Recognition.FaceRecognition.__new__(Recognition.FaceRecognition)  # bỏ qua nạp ảnh từ detect/
     fr.known_face_encodings, fr.known_face_names = [], []
+    fr.smoother = NameSmoother(min_votes=1)
     frame = np.zeros((480, 640, 3), dtype=np.uint8)
     fr.recognize(frame)
 
@@ -105,7 +124,7 @@ def test_recognize_detects_on_small_frame_but_encodes_on_full_frame(monkeypatch)
     inv = Recognition.INV_SCALE
     assert calls['encode_locs'] == [(10 * inv, 50 * inv, 40 * inv, 20 * inv)]
     assert fr.face_locations == [(10, 50, 40, 20)]   # toạ độ khung nhỏ giữ nguyên cho draw_faces
-    assert fr.face_names == ['Unknown Unknown']
+    assert fr.face_names == ['Unknown']
 
 
 class TestPersonName:
@@ -140,3 +159,31 @@ def test_match_face_returns_person_when_many_images_per_person():
     known = [unit_at_distance(0.45), unit_at_distance(0.1), unit_at_distance(0.9)]
     name, _ = match_face(vec(0), known, ['Huy', 'Huy', 'Elon'])
     assert name == 'Huy'
+
+
+class TestFormatLabel:
+    def test_known_person_shows_name_and_confidence(self):
+        assert format_label('Huy', '98.3%') == 'Huy 98.3%'
+
+    def test_unknown_and_pending_have_no_confidence_suffix(self):
+        assert format_label('Unknown', 'Unknown') == 'Unknown'
+        assert format_label(PENDING, '') == PENDING
+
+
+def test_recognize_smooths_labels_across_calls(monkeypatch):
+    """Nhãn chỉ hiện sau đủ phiếu, và một lần nhận diện lạc không làm nhấp nháy nhãn."""
+    monkeypatch.setattr(Recognition.face_recognition, 'face_locations', lambda img, **kw: [(10, 50, 40, 20)])
+    monkeypatch.setattr(Recognition.face_recognition, 'face_encodings', lambda img, locs: [vec(0)])
+    fr = Recognition.FaceRecognition.__new__(Recognition.FaceRecognition)
+    fr.known_face_encodings, fr.known_face_names = [unit_at_distance(0.1)], ['Huy']
+    fr.smoother = NameSmoother(window=5, min_votes=2)
+    frame = np.zeros((480, 640, 3), dtype=np.uint8)
+
+    fr.recognize(frame)
+    assert fr.face_names == [PENDING]                       # mới 1 phiếu
+    fr.recognize(frame)
+    assert fr.face_names[0].startswith('Huy ')              # đủ 2 phiếu
+
+    fr.known_face_encodings = []                            # một lần nhận diện lạc: nhìn ra 'Unknown'
+    fr.recognize(frame)
+    assert fr.face_names[0].startswith('Huy ')              # nhãn vẫn giữ nguyên

@@ -168,7 +168,8 @@ class FaceRecognition:
 | `face_encodings` | Vector đặc trưng 128 chiều của từng khuôn mặt trong khung hình hiện tại |
 | `face_names` | Tên (+ độ tin cậy) tương ứng với từng khuôn mặt, để hiển thị lên ảnh |
 | `known_face_encodings` | Danh sách vector đặc trưng của các khuôn mặt đã lưu (dữ liệu "đã biết") |
-| `known_face_names` | Tên tương ứng với `known_face_encodings` (chính là tên file ảnh trong `detect/`) |
+| `known_face_names` | Tên người tương ứng với `known_face_encodings` (suy ra từ tên file bằng `person_name`, lặp lại theo số ảnh) |
+| `smoother` | `NameSmoother` giữ phiếu của từng khuôn mặt qua các lần nhận diện |
 | `frame_count` | Bộ đếm số khung hình đã xử lý, dùng để quyết định khung nào chạy nhận diện (`frame_count % PROCESS_EVERY_N == 0`) |
 
 > Các thuộc tính state (`face_locations`, `face_encodings`, ...) nay được khởi tạo trong `__init__` bằng `self.x = ...` thay vì khai báo ở cấp lớp như trước — mỗi instance của `FaceRecognition` có state riêng, tránh rủi ro chia sẻ dữ liệu ngoài ý muốn giữa các instance.
@@ -212,14 +213,14 @@ Vì `match_face` chọn **ảnh gần nhất** rồi trả tên người của �
 ### `match_face()` — so khớp một khuôn mặt
 
 ```python
-def match_face(encoding, known_encodings, known_names, threshold=MATCH_THRESHOLD):
+def match_face(encoding, known_encodings, known_names, threshold=RECOGNITION_THRESHOLD):
     if len(known_encodings) == 0:
         return 'Unknown', 'Unknown'
 
     distances = face_recognition.face_distance(known_encodings, encoding)
     best = int(np.argmin(distances))
     if distances[best] <= threshold:
-        return known_names[best], face_confidence(distances[best], threshold)
+        return known_names[best], face_confidence(distances[best])
     return 'Unknown', 'Unknown'
 ```
 
@@ -228,7 +229,18 @@ Hàm thuần (không đụng webcam/ảnh) nên dễ test:
 2. `face_distance` tính khoảng cách tới từng khuôn mặt đã biết, `np.argmin` chọn khuôn mặt **gần nhất**.
 3. Nếu khoảng cách ≤ ngưỡng (bao gồm cả biên) → trả tên và độ tin cậy; ngược lại `Unknown`.
 
-Cách này tương đương `compare_faces` (vốn chỉ so `distance <= 0.6`) nhưng bỏ được lượt so khớp thừa.
+**Hai ngưỡng khác nhau**: `RECOGNITION_THRESHOLD = 0.5` quyết định *có nhận hay không*; `MATCH_THRESHOLD = 0.6` chỉ là mốc để dựng thang % trong `face_confidence`. Tách ra để siết ngưỡng nhận diện (giảm nhận nhầm người lạ) mà **con số % hiển thị không dịch chuyển**. `0.5` là điểm khởi đầu chặt hơn mặc định 0.6 của thư viện; đánh đổi là đôi lúc không nhận ra chính người đó (ví dụ khuôn mặt cách ảnh đăng ký 0.55 trước đây được nhận, giờ là `Unknown`). Chọn giá trị tốt nhất cần số liệu thật từ `evaluate.py` (hạng mục 5).
+
+### `NameSmoother` — bỏ phiếu để nhãn không nhấp nháy ([smoothing.py](../smoothing.py))
+
+Nhận diện chạy 1 trong mỗi `PROCESS_EVERY_N` khung, và từng lần riêng lẻ có thể nhiễu (một lần nhìn ra `Unknown` hoặc tên khác). `NameSmoother` gom kết quả qua nhiều lần:
+
+- **Track**: mỗi khuôn mặt được ghép với khuôn mặt ở lần trước theo khoảng cách tâm hộp (ghép tham lam theo khoảng cách nhỏ nhất, chấp nhận nếu tâm lệch ≤ `TRACK_MAX_DIST_RATIO` × bề rộng mặt). Nhờ đó hai người trong khung không lẫn phiếu của nhau, kể cả khi thứ tự trong danh sách đổi.
+- **Bỏ phiếu**: mỗi track giữ `VOTE_WINDOW = 5` kết quả gần nhất; chỉ hiện tên khi một tên có ≥ `VOTE_MIN = 3` phiếu. Chưa đủ phiếu hiện `...`. Hoà phiếu → lấy tên xuất hiện gần nhất. Độ tin cậy lấy từ lần gần nhất mang tên thắng.
+- **Hết hạn**: track vắng quá `TRACK_MAX_MISSES` lần thì bị xoá; vắng ngắn (ví dụ 1 lần dò trượt) vẫn giữ phiếu.
+- **Đánh đổi**: nhãn xuất hiện chậm hơn khoảng 3 lần nhận diện (≈ 9 khung, vài trăm ms) nhưng ổn định. Một người khác bước vào đúng vị trí sẽ cần ~3 lần nhận diện để đổi nhãn.
+
+`format_label()` tạo chuỗi hiển thị: `Huy 98.18%`, `Unknown` (không còn lặp `Unknown Unknown` như trước) hoặc `...`.
 
 ### `recognize(self, frame)`
 
@@ -243,10 +255,12 @@ self.face_locations = face_recognition.face_locations(rgb_small_frame, number_of
 full_locations = scale_locations(self.face_locations, INV_SCALE, frame.shape)
 self.face_encodings = face_recognition.face_encodings(rgb_frame, full_locations)
 
-self.face_names = []
-for face_encoding in self.face_encodings:
-    name, confidence = match_face(face_encoding, self.known_face_encodings, self.known_face_names)
-    self.face_names.append(f'{name} {confidence}')
+raw_results = [
+    match_face(face_encoding, self.known_face_encodings, self.known_face_names)
+    for face_encoding in self.face_encodings
+]
+smoothed = self.smoother.update(self.face_locations, raw_results)
+self.face_names = [format_label(name, confidence) for name, confidence in smoothed]
 ```
 
 - **Dò trên khung thu nhỏ** (`DETECT_SCALE = 0.5`) vì dò là bước tốn theo số điểm ảnh. `face_locations` giữ toạ độ của khung nhỏ để `draw_faces` dùng.
@@ -340,7 +354,8 @@ run_recognition()
    → vòng lặp (thread chính):
         → lấy khung hình mới nhất từ VideoStream
         → (mỗi PROCESS_EVERY_N khung) recognize(): dò trên khung thu nhỏ, mã hoá trên khung gốc
-             → match_face(): chọn khuôn mặt gần nhất; ≤ ngưỡng thì gán tên + % confidence, ngược lại "Unknown"
+             → match_face(): chọn khuôn mặt gần nhất; ≤ RECOGNITION_THRESHOLD thì gán tên + % confidence, ngược lại "Unknown"
+             → NameSmoother: bỏ phiếu qua nhiều lần nhận diện (chưa đủ phiếu hiện "...")
         → draw_faces() + FPS lên khung hình gốc → hiển thị
    → ESC để thoát → dừng VideoStream, đóng cửa sổ
 ```
