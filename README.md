@@ -13,7 +13,7 @@
 | File | Mô tả |
 |---|---|
 | [Main.py](Main.py) | Điểm khởi chạy chương trình. Dựng cửa sổ GUI với hai chức năng chính: thêm ảnh khuôn mặt và nhận diện khuôn mặt. |
-| [capture.py](capture.py) | Chụp ảnh khuôn mặt từ webcam: kiểm tra trực tiếp (đúng 1 khuôn mặt, đủ lớn) và lưu vào `detect/`. |
+| [capture.py](capture.py) | Chụp ảnh khuôn mặt từ webcam: kiểm tra trực tiếp (đúng 1 khuôn mặt, đủ lớn, đủ sáng, nét, nhìn thẳng) và lưu vào `detect/`. |
 | [Recognition.py](Recognition.py) | Nhận diện: nạp ảnh trong `detect/` (có cache encoding), so khớp và vẽ khuôn mặt từ webcam bằng thư viện `face_recognition`; lớp `VideoStream` đọc webcam ở thread riêng. |
 | [config.py](config.py) | Hằng số dùng chung (thư mục `detect/`, ngưỡng nhận diện, tỉ lệ thu nhỏ, ...). |
 | [Check_Detect.py](Check_Detect.py) | Script kiểm tra và dọn ảnh trùng / ảnh lỗi trong `detect/`. |
@@ -67,7 +67,7 @@ Cửa sổ GUI sẽ hiện ra với hai nút bấm:
 
 1. **Thêm ảnh vào hệ thống**
    - Nhập tên khi được hỏi.
-   - Khung hình hiển thị viền **xanh** khi ảnh hợp lệ (đúng 1 khuôn mặt, đủ lớn) và **đỏ** kèm lý do khi chưa hợp lệ.
+   - Khung hình hiển thị viền **xanh** khi ảnh hợp lệ (đúng 1 khuôn mặt, đủ lớn, đủ sáng, nét, nhìn thẳng) và **đỏ** kèm lý do và số đo khi chưa hợp lệ (ngưỡng chỉnh trong [config.py](config.py); chi tiết: [docs/Capture.md](docs/Capture.md)).
    - Nhấn phím `SPACEBAR` để chụp; ảnh chỉ được lưu khi viền xanh. Chụp lại cùng tên sẽ không ghi đè ảnh cũ.
    - Nhấn `ESC` để đóng cửa sổ webcam khi đã chụp xong.
 

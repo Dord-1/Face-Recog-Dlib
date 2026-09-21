@@ -39,3 +39,15 @@ PROCESS_EVERY_N = 3
 # Chụp ảnh: khuôn mặt hẹp hơn giá trị này (px, khung gốc) bị coi là quá xa; kiểm tra mỗi N khung
 MIN_FACE_WIDTH = 100
 CHECK_EVERY_N = 3
+
+# Chất lượng ảnh đăng ký (đo trên ảnh thật giả lập webcam 640 rộng; xem docs/Capture.md).
+# Cắt vùng mặt về FACE_CHIP x FACE_CHIP xám rồi đo. MIN_SHARPNESS = Laplacian chia cho tương phản
+# (không đổi khi ảnh tối đi): ảnh nét ~0.2-0.38, mờ sigma>=3 < 0.06; đặt thấp (dễ chịu) vì webcam thật
+# mềm hơn ảnh thu nhỏ - CHƯA kiểm chứng trên webcam, chỉnh theo số hiện ở thông báo. Độ sáng: trung bình xám.
+# MAX_YAW_RATIO: tỉ lệ khoảng cách mũi tới hai mắt (nhìn thẳng ~1.03-1.07); 1.35 là giá trị bảo thủ
+# CHƯA kiểm chứng với mặt nghiêng thật.
+FACE_CHIP = 100
+MIN_SHARPNESS = 0.10
+MIN_BRIGHTNESS = 60
+MAX_BRIGHTNESS = 215
+MAX_YAW_RATIO = 1.35
