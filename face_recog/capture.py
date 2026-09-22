@@ -5,6 +5,7 @@ import tkinter.simpledialog as simpledialog
 
 import cv2
 
+from face_recog.activity_log import log_event
 from face_recog.config import CHECK_EVERY_N, DETECT_DIR
 from face_recog.quality import check_frame
 
@@ -72,6 +73,7 @@ def img_capture(parent):
             img_name = f"{file_name}_{img_counter}.jpg"
             cv2.imwrite(os.path.join(DETECT_DIR, img_name), frame)
             print(f"{img_name} đã chụp!")
+            log_event('CAPTURE', f'{img_name} ({file_name})')
             img_counter += 1
 
     cam.release()

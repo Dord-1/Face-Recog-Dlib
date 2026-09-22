@@ -4,12 +4,14 @@ import time
 import cv2
 import face_recognition
 
+from face_recog.activity_log import log_event
 from face_recog.camera import VideoStream
-from face_recog.config import DETECT_SCALE, INV_SCALE, PROCESS_EVERY_N
+from face_recog.config import DETECT_SCALE, INV_SCALE
 from face_recog.geometry import scale_locations
 from face_recog.known_faces import load_known_faces, person_name
 from face_recog.matching import format_label, match_face
-from face_recog.smoothing import NameSmoother
+from face_recog.settings import load_settings
+from face_recog.smoothing import PENDING, NameSmoother
 
 
 def draw_faces(frame, locations, names):
@@ -26,10 +28,12 @@ def draw_faces(frame, locations, names):
 
 
 class FaceRecognition:
-    # Số khung hình bỏ qua giữa 2 lần xử lý nhận diện (chỉ xử lý 1/PROCESS_EVERY_N khung).
-    PROCESS_EVERY_N = PROCESS_EVERY_N
-
     def __init__(self):
+        settings = load_settings()
+        # Số khung hình bỏ qua giữa 2 lần xử lý nhận diện (chỉ xử lý 1/PROCESS_EVERY_N khung).
+        self.PROCESS_EVERY_N = settings['process_every_n']
+        self.recognition_threshold = settings['recognition_threshold']
+
         self.face_locations = []
         self.face_encodings = []
         self.face_names = []
@@ -37,6 +41,7 @@ class FaceRecognition:
         self.known_face_names = []
         self.smoother = NameSmoother()
         self.frame_count = 0
+        self._logged_names = set()
         self.encode_faces()
 
     def encode_faces(self):
@@ -64,11 +69,17 @@ class FaceRecognition:
         self.face_encodings = face_recognition.face_encodings(rgb_frame, full_locations)
 
         raw_results = [
-            match_face(face_encoding, self.known_face_encodings, self.known_face_names)
+            match_face(face_encoding, self.known_face_encodings, self.known_face_names,
+                       threshold=self.recognition_threshold)
             for face_encoding in self.face_encodings
         ]
         smoothed = self.smoother.update(self.face_locations, raw_results)
         self.face_names = [format_label(name, confidence) for name, confidence in smoothed]
+
+        for name, _ in smoothed:
+            if name not in (PENDING, 'Unknown') and name not in self._logged_names:
+                self._logged_names.add(name)
+                log_event('RECOGNIZE', name)
 
     def run_recognition(self):
         video_stream = VideoStream(0)

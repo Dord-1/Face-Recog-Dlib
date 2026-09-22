@@ -18,6 +18,9 @@ Face-Recog-Dlib/
 │   ├── smoothing.py         # NameSmoother: bỏ phiếu qua nhiều lần nhận diện
 │   ├── recognizer.py        # FaceRecognition, draw_faces: điều phối nhận diện thời gian thực
 │   ├── quality.py           # đo độ sáng/độ nét/mặt nhìn thẳng, check_frame (không dùng Tkinter)
+│   ├── settings.py          # cài đặt chỉnh từ GUI: ngưỡng nhận diện, tốc độ xử lý (detect/settings.json)
+│   ├── activity_log.py      # nhật ký hoạt động: log_event/read_events (detect/activity.log)
+│   ├── people.py            # quản lý người đăng ký: list_people, delete_person
 │   ├── capture.py           # chụp ảnh đăng ký: hộp thoại + vòng lặp webcam (Tkinter)
 │   ├── gui.py               # cửa sổ chính (Tkinter)
 │   ├── __main__.py          # python -m face_recog
@@ -46,8 +49,11 @@ Ba file `.py` ở gốc chỉ có vài dòng gọi vào package, để các lệ
 | `smoothing` | Bỏ phiếu theo từng khuôn mặt qua các lần nhận diện | Không biết gì về ảnh |
 | `recognizer` | Ghép các module trên thành vòng lặp nhận diện + vẽ kết quả | Không có giao diện Tk |
 | `quality` | Đo chất lượng khung hình khi chụp; `check_frame` | Không dùng Tkinter |
-| `capture` | Hộp thoại nhập tên, vòng lặp chụp, lưu ảnh | Không tự đo chất lượng (gọi `quality`) |
-| `gui` | Dựng cửa sổ, nối nút với `capture`/`recognizer` | Không chứa logic nhận diện |
+| `settings` | Đọc/ghi `detect/settings.json` (ngưỡng nhận diện, tốc độ xử lý), validate | Không dùng Tkinter |
+| `activity_log` | Ghi/đọc `detect/activity.log` | Không dùng Tkinter |
+| `people` | Liệt kê/xoá người đăng ký trong `detect/` | Không dùng Tkinter |
+| `capture` | Hộp thoại nhập tên, vòng lặp chụp, lưu ảnh, ghi log | Không tự đo chất lượng (gọi `quality`) |
+| `gui` | Dựng cửa sổ, nối nút với `capture`/`recognizer`/`settings`/`activity_log`/`people` | Không chứa logic nhận diện |
 | `tools.*` | Công cụ dòng lệnh dùng lại các module lõi | Không import `gui`/`capture` |
 
 ## Luật phụ thuộc
@@ -56,12 +62,18 @@ Phụ thuộc chỉ đi **một chiều** (mũi tên = "import"), không có vò
 
 ```
 gui ──> capture ──> quality ──> geometry
- │         └───────────────────> config
+ │         ├───────────────────> config
+ │         └───────────────────> activity_log ──> config
  ├──────> recognizer ──> matching ──> smoothing ──> config
  │            ├────────> known_faces ─> config
  │            ├────────> camera
  │            ├────────> geometry
- │            └────────> smoothing
+ │            ├────────> smoothing
+ │            ├────────> settings ──> config
+ │            └────────> activity_log
+ ├──────> settings ──> config
+ ├──────> activity_log ──> config
+ └──────> people ──> known_faces, config
 tools.check_detect, tools.evaluate ──> known_faces, geometry, config
 ```
 
@@ -95,7 +107,10 @@ gui.start_recognition
 
 ```
 gui ─> capture.img_capture ─> quality.check_frame ─> (viền xanh/đỏ) ─> SPACE ─> detect/Ten_N.jpg
+                                                                           └─> activity_log.log_event
 ```
+
+**Quản lý người dùng** (nút "Quản lý người dùng"): `gui.open_people_window` gọi `people.list_people` để hiển thị, `people.delete_person` khi xoá (kèm `activity_log.log_event`). **Nhật ký** (nút "Nhật ký"): `gui.open_log_window` chỉ đọc bằng `activity_log.read_events`. **Cài đặt** (nút "Cài đặt"): `gui.open_settings_window` đọc/ghi bằng `settings.load_settings`/`settings.save_settings`; giá trị mới chỉ áp dụng từ lần `FaceRecognition()` tiếp theo (đọc settings trong `__init__`).
 
 ## Muốn sửa X thì vào đâu
 
@@ -110,6 +125,9 @@ gui ─> capture.img_capture ─> quality.check_frame ─> (viền xanh/đỏ) �
 | Đổi giao diện, nút, chữ | `gui.py` (chụp ảnh: `capture.py`) |
 | Đổi webcam, độ phân giải, cách đọc khung | `camera.py` |
 | Thêm công cụ dòng lệnh mới | `tools/<ten>.py` + script mỏng ở gốc nếu cần |
+| Thêm cài đặt chỉnh được từ GUI | `settings.py` (`DEFAULTS`, `validate_settings`) + đọc trong `recognizer.FaceRecognition.__init__` |
+| Đổi việc gì được ghi vào nhật ký | `activity_log.log_event` tại nơi gọi (`recognizer.recognize`, `capture.img_capture`, `gui.open_people_window`) |
+| Đổi cách liệt kê/xoá người trong quản lý người dùng | `people.py` |
 
 ## Quy ước
 

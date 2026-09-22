@@ -6,6 +6,9 @@
 
 - **Thêm khuôn mặt vào hệ thống**: nhập tên, chụp ảnh khuôn mặt trực tiếp từ webcam và lưu lại để nhận diện sau này.
 - **Nhận diện khuôn mặt theo thời gian thực**: mở webcam, phát hiện khuôn mặt trong khung hình, so khớp với dữ liệu đã lưu và hiển thị tên kèm độ tin cậy (%) ngay trên video.
+- **Nhật ký**: xem lại các lần nhận diện ra người quen, thêm ảnh và xoá người, ngay trong GUI.
+- **Quản lý người dùng**: xem danh sách người đã đăng ký (kèm số ảnh) và xoá một người khỏi hệ thống.
+- **Cài đặt**: chỉnh ngưỡng nhận diện và tốc độ xử lý mà không cần sửa code.
 - **Giao diện đồ họa (GUI)** đơn giản bằng Tkinter để thao tác mà không cần dùng dòng lệnh.
 
 ## Cấu trúc dự án
@@ -21,6 +24,9 @@ face_recog/                             # toàn bộ logic, mỗi module một t
 ├── smoothing.py     # NameSmoother: bỏ phiếu để nhãn không nhấp nháy
 ├── recognizer.py    # điều phối nhận diện thời gian thực
 ├── quality.py       # kiểm tra chất lượng ảnh khi chụp (sáng, nét, nhìn thẳng)
+├── settings.py      # cài đặt chỉnh từ GUI (ngưỡng nhận diện, tốc độ xử lý)
+├── activity_log.py  # nhật ký hoạt động (nhận diện, thêm/xoá ảnh)
+├── people.py        # quản lý người đã đăng ký (xem, xoá)
 ├── capture.py       # chụp ảnh đăng ký từ webcam
 ├── gui.py           # cửa sổ chính (Tkinter)
 └── tools/           # check_detect.py (dọn ảnh trùng/lỗi), evaluate.py (đo độ chính xác)
@@ -82,6 +88,14 @@ Cửa sổ GUI sẽ hiện ra với hai nút bấm:
    - Encoding khuôn mặt được cache trong `detect/.encodings.pkl` nên các lần mở sau khởi động nhanh; ảnh không có khuôn mặt bị bỏ qua thay vì gây lỗi.
    - Mở webcam và nhận diện các khuôn mặt đã lưu trong `detect/`, hiển thị tên và độ tin cậy trên khung hình. Nhãn hiện `...` vài phần giây đầu rồi mới hiện tên (bỏ phiếu qua nhiều lần nhận diện để không nhấp nháy).
    - Nhấn `ESC` để thoát.
+
+3. **Nhật ký**: mở cửa sổ liệt kê các sự kiện gần đây (nhận diện ra người quen, thêm ảnh, xoá người), mới nhất trên cùng. Nút "Làm mới" để cập nhật.
+
+4. **Quản lý người dùng**: xem danh sách người đã đăng ký kèm số ảnh; chọn một người và nhấn "Xoá người đã chọn" để xoá toàn bộ ảnh của họ (có xác nhận). Sau khi xoá, mở lại "Nhận diện khuôn mặt" để nạp lại danh sách.
+
+5. **Cài đặt**: chỉnh "Ngưỡng nhận diện" (`recognition_threshold`, càng thấp càng chặt) và "Số khung hình bỏ qua" (`process_every_n`, tăng nếu máy yếu để đỡ lag). Nhấn "Lưu"; giá trị mới áp dụng từ lần bấm "Nhận diện khuôn mặt" tiếp theo.
+
+Dữ liệu của 3 tính năng trên (`detect/settings.json`, `detect/activity.log`) tự sinh trong `detect/` và không được đưa lên git (nằm trong `detect/*` bị ignore).
 
 ### Chạy thử phát hiện khuôn mặt đơn giản (tuỳ chọn)
 
