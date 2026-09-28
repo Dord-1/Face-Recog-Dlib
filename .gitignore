@@ -7,3 +7,4 @@ detect/*
 !detect/.gitkeep
 eval/*
 !eval/.gitkeep
+CLAUDE.md

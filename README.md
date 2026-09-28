@@ -13,7 +13,7 @@
 
 ## Cấu trúc dự án
 
-```
+```text
 Main.py, Check_Detect.py, evaluate.py   # script mỏng ở gốc (giữ nguyên các lệnh chạy quen thuộc)
 face_recog/                             # toàn bộ logic, mỗi module một trách nhiệm
 ├── config.py        # hằng số dùng chung (thư mục detect/, ngưỡng nhận diện, tỉ lệ thu nhỏ, ...)
