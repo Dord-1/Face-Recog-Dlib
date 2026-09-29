@@ -100,7 +100,9 @@ class TestDataSufficiency:
 
     def test_small_sample_warning(self):
         few = [rec('huy', 'huy', 0.3)] * 3 + [rec('unknown', 'huy', 0.8)] * 3
-        assert 'mẫu nhỏ' in small_sample_warning(few, ENROLLED)
+        warning = small_sample_warning(few, ENROLLED)
+        assert warning is not None
+        assert 'mẫu nhỏ' in warning
         enough = [rec('huy', 'huy', 0.3)] * 10 + [rec('unknown', 'huy', 0.8)] * 10
         assert small_sample_warning(enough, ENROLLED) is None
 

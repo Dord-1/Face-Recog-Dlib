@@ -34,7 +34,7 @@ class FakeCam:
 class TestImgCapture:
     """Mô phỏng webcam + hộp thoại để kiểm tra ảnh chỉ lưu khi hợp lệ và có ghi nhật ký."""
 
-    def prepare(self, monkeypatch, tmp_path, name='Huy', valid=True, keys=(32, 27)):
+    def prepare(self, monkeypatch, tmp_path, name: str | None = 'Huy', valid=True, keys=(32, 27)):
         monkeypatch.setattr(capture, 'DETECT_DIR', str(tmp_path))
         monkeypatch.setattr(capture.simpledialog, 'askstring', lambda **kw: name)
         monkeypatch.setattr(capture.cv2, 'VideoCapture', lambda src: FakeCam())

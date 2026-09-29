@@ -65,6 +65,7 @@ class TestCheckFrame:
         patch_landmarks(monkeypatch, frontal_landmarks())
         valid, _, box = quality.check_frame(frame())
         assert valid
+        assert box is not None
         left, top, right, bottom = box
         assert right - left >= MIN_FACE_WIDTH
 
