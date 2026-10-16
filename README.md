@@ -76,7 +76,9 @@ Nhận diện khuôn mặt có thể chạy chậm trên máy cấu hình yếu,
 python Main.py          # hoặc: python -m face_recog
 ```
 
-Cửa sổ GUI sẽ hiện ra với hai nút bấm:
+Cửa sổ GUI sẽ hiện ra với các nút bấm:
+
+![Cửa sổ chính của FR System](docs/images/gui_main.png)
 
 1. **Thêm ảnh vào hệ thống**
    - Nhập tên khi được hỏi.
@@ -94,6 +96,12 @@ Cửa sổ GUI sẽ hiện ra với hai nút bấm:
 4. **Quản lý người dùng**: xem danh sách người đã đăng ký kèm số ảnh; chọn một người và nhấn "Xoá người đã chọn" để xoá toàn bộ ảnh của họ (có xác nhận). Sau khi xoá, mở lại "Nhận diện khuôn mặt" để nạp lại danh sách.
 
 5. **Cài đặt**: chỉnh "Ngưỡng nhận diện" (`recognition_threshold`, càng thấp càng chặt) và "Số khung hình bỏ qua" (`process_every_n`, tăng nếu máy yếu để đỡ lag). Nhấn "Lưu"; giá trị mới áp dụng từ lần bấm "Nhận diện khuôn mặt" tiếp theo.
+
+| Nhật ký | Quản lý người dùng | Cài đặt |
+|---|---|---|
+| ![Cửa sổ Nhật ký](docs/images/gui_log.png) | ![Cửa sổ Quản lý người dùng](docs/images/gui_people.png) | ![Cửa sổ Cài đặt](docs/images/gui_settings.png) |
+
+*Ảnh chụp dùng dữ liệu mẫu.*
 
 Dữ liệu của 3 tính năng trên (`detect/settings.json`, `detect/activity.log`) tự sinh trong `detect/` và không được đưa lên git (nằm trong `detect/*` bị ignore).
 
